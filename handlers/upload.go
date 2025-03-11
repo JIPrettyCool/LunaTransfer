@@ -2,6 +2,7 @@ package handlers
 
 import (
     "LunaMFT/auth"
+    "LunaMFT/config"
     "LunaMFT/utils"
     "encoding/json"
     "io"
@@ -19,11 +20,13 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
+    
     user, err := auth.GetUser(username)
     if err != nil || user.APIKey != apiKey {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
+    
     err = r.ParseMultipartForm(32 << 20)
     if err != nil {
         http.Error(w, "Bad request", http.StatusBadRequest)
@@ -37,14 +40,16 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
     }
     defer file.Close()
 
-    err = os.MkdirAll("uploads", 0755)
+    userDir := config.UserStoragePath(username)
+    
+    err = os.MkdirAll(userDir, 0755)
     if err != nil {
         http.Error(w, "Internal server error", http.StatusInternalServerError)
         return
     }
 
     filename := sanitizeFileName(header.Filename)
-    filePath := filepath.Join("uploads", filename)
+    filePath := filepath.Join(userDir, filename)
 
     dst, err := os.Create(filePath)
     if err != nil {
