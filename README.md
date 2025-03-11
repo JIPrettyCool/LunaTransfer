@@ -2,49 +2,66 @@
 
 Self Hostable Managed File Transfer app
 
-Create User
+## API Usage Examples
 
-```
-curl -X POST http://localhost:8080/signup
-  -H "Content-Type: application/json"
-  -d '{"username":"test1","password":"test1"}'
-```
+### Create User
 
-Login (GET API KEY)
-```
-curl -X POST http://localhost:8080/login
-  -H "Content-Type: application/json"
-  -d '{"username":"test1","password":"test1"}'
+```bash
+curl -X POST http://localhost:8080/signup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test1","password":"Test1Password123","email":"test@example.com","role":"user"}'
 ```
 
-Upload File
+### Login (Get API Key)
+
+```bash
+curl -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test1","password":"Test1Password123"}'
 ```
-curl -X POST http://localhost:8080/upload
-  -H "Username: test1"
-  -H "API-Key: YOUR_API_KEY"
+
+### Upload File
+
+```bash
+curl -X POST http://localhost:8080/api/upload \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -F "file=@/path/to/your/file.txt"
 ```
 
-List Files
-```
-curl -v http://localhost:8080/files
-  -H "Username: test1"
-  -H "API-Key: Your_API_KEY"
+### List Files
+
+```bash
+curl -X GET http://localhost:8080/api/files \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-Download File
-```
-curl -X GET http://localhost:8080/download/file.txt
-  -H "Username: test1"
-  -H "API-Key: YOUR_API_KEY"
+### Download File
+
+```bash
+curl -X GET http://localhost:8080/api/download/file.txt \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   --output downloaded_file.txt
 ```
 
-Delete File
+### Delete File
+
+```bash
+curl -X DELETE http://localhost:8080/api/delete/file.txt \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
-curl -X DELETE http://localhost:8080/delete/file.txt
-  -H "Username: test1"
-  -H "API-Key: YOUR_API_KEY"
+
+### Get User Dashboard
+
+```bash
+curl -X GET http://localhost:8080/api/dashboard \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### WebSocket Connection (for real-time notifications)
+
+```bash
+# Using a WebSocket client like wscat
+wscat -c "ws://localhost:8080/ws" -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ## TODO
@@ -57,12 +74,12 @@ curl -X DELETE http://localhost:8080/delete/file.txt
 - Drag n Drop uploads
 - Timeline
 - Preview of file
-- Websocket improvements
+- ~~Websocket improvements~~
 - Monitoring, health checks
 - User settings configuration
 - More secure key than APIKey, maybe JWT
 - Docker support
-- Input Validation for API inputs
+- ~~Input Validation for API inputs~~
 - Chunked uploads
 - Batch uploads
 - API Key change due time

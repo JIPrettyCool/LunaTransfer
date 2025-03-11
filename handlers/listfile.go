@@ -1,87 +1,81 @@
 package handlers
 
 import (
-    "LunaMFT/auth"
     "LunaMFT/config"
+    "LunaMFT/middleware"
     "encoding/json"
-    "fmt"
     "net/http"
     "os"
+    "path/filepath"
+    "sort"
     "time"
 )
 
 type FileInfo struct {
-    FileName     string    `json:"filename"`
-    FileSize     int64     `json:"filesize"`
-    LastModified time.Time `json:"lastmodified"`
+    Name         string    `json:"name"`
+    Size         int64     `json:"size"`
+    LastModified time.Time `json:"lastModified"`
+    IsDirectory  bool      `json:"isDirectory"`
 }
 
 func ListFiles(w http.ResponseWriter, r *http.Request) {
-    username := r.Header.Get("Username")
-    apiKey := r.Header.Get("API-Key")
-
-    if username == "" || apiKey == "" {
+    username, ok := r.Context().Value(middleware.UsernameContextKey).(string)
+    if !ok {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
-
-    user, err := auth.GetUser(username)
-    if err != nil || user.APIKey != apiKey {
-        http.Error(w, "Invalid Credentials", http.StatusUnauthorized)
+    path := r.URL.Query().Get("path")
+    if path != "" && filepath.IsAbs(path) {
+        http.Error(w, "Invalid path", http.StatusBadRequest)
         return
     }
 
-    files, err := getUserFiles(username)
-    if err != nil {
-        http.Error(w, "Failed to retrieve files: "+err.Error(), http.StatusInternalServerError)
+    userDir := filepath.Join(config.StoragePath, username)
+    if path != "" {
+        userDir = filepath.Join(userDir, path)
+    }
+
+    if err := os.MkdirAll(userDir, 0755); err != nil {
+        http.Error(w, "Failed to access directory", http.StatusInternalServerError)
         return
     }
 
-    w.Header().Set("Content-Type", "application/json")
-    
-    if err := json.NewEncoder(w).Encode(map[string]interface{}{
-        "status": "success",
-        "count":  len(files),
-        "files":  files,
-    }); err != nil {
-        http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-    }
-}
-
-func getUserFiles(username string) ([]FileInfo, error) {
-    // Get user directory using the config package
-    userDir := config.UserStoragePath(username)
-    
-    if _, err := os.Stat(userDir); os.IsNotExist(err) {
-        // If directory doesn't exist, create it
-        if err := config.EnsureUserStorageExists(username); err != nil {
-            return nil, fmt.Errorf("failed to create user directory: %w", err)
-        }
-        return []FileInfo{}, nil
-    }
-    
-    entries, err := os.ReadDir(userDir)
+    files, err := os.ReadDir(userDir)
     if err != nil {
-        return nil, fmt.Errorf("failed to read directory: %w", err)
+        http.Error(w, "Failed to list files", http.StatusInternalServerError)
+        return
     }
-    
-    fileInfos := make([]FileInfo, 0, len(entries))
-    for _, entry := range entries {
-        if entry.IsDir() {
-            continue
-        }
-        
-        info, err := entry.Info()
+
+    fileInfos := make([]FileInfo, 0, len(files))
+    for _, file := range files {
+        info, err := file.Info()
         if err != nil {
             continue
         }
-        
+
         fileInfos = append(fileInfos, FileInfo{
-            FileName:     entry.Name(),
-            FileSize:     info.Size(),
+            Name:         file.Name(),
+            Size:         info.Size(),
             LastModified: info.ModTime(),
+            IsDirectory:  file.IsDir(),
         })
     }
-    
-    return fileInfos, nil
+
+    sort.Slice(fileInfos, func(i, j int) bool {
+        if fileInfos[i].IsDirectory != fileInfos[j].IsDirectory {
+            return fileInfos[i].IsDirectory
+        }
+        return fileInfos[i].Name < fileInfos[j].Name
+    })
+
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(struct {
+        Files []FileInfo `json:"files"`
+        Path  string     `json:"path"`
+    }{
+        Files: fileInfos,
+        Path:  path,
+    }); err != nil {
+        http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+    }
 }

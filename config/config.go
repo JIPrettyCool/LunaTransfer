@@ -1,78 +1,202 @@
 package config
 
 import (
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
     "os"
     "path/filepath"
     "strconv"
+    "strings"
     "time"
 )
 
 const (
-    DefaultStoragePath    = "./storage"
+    DefaultPort         = 8080
+    DefaultMaxFileSize  = 100 * 1024 * 1024 // 100MB
+    DefaultStoragePath  = "./storage"
+    DefaultLogFile      = "transfers.log"
+    DefaultConfigFile   = "config.json"
+    DefaultRateLimit    = 60
     DefaultMaxUploadSize  = 32 << 20
     DefaultTokenExpiry    = 24 * time.Hour
     DefaultMaxConcurrent  = 5
 )
+
+var (
+    StoragePath string
+)
+
 type AppConfig struct {
-    StoragePath    string
+    Port            int    `json:"port"`
+    TransferLogFile string `json:"transferLogFile"`
+    SystemLogFile   string `json:"systemLogFile"`
+    DataPath       string `json:"dataPath"`
+    DebugMode      bool   `json:"debugMode"`
+    MaxFileSize    int64  `json:"max_file_size"`
+    StoragePath    string `json:"storage_path"`
+    LogFile        string `json:"log_file"`
+    RateLimit      int    `json:"rate_limit"`
     MaxUploadSize  int64
     TokenExpiry    time.Duration
     MaxConcurrent  int
 }
-var Config = loadConfig()
-func loadConfig() AppConfig {
-    return AppConfig{
-        StoragePath:    getEnvOrDefault("LUNAMFT_STORAGE_PATH", DefaultStoragePath),
-        MaxUploadSize:  getEnvAsInt64OrDefault("LUNAMFT_MAX_UPLOAD", DefaultMaxUploadSize),
-        TokenExpiry:    getEnvAsDurationOrDefault("LUNAMFT_TOKEN_EXPIRY", DefaultTokenExpiry),
-        MaxConcurrent:  getEnvAsIntOrDefault("LUNAMFT_MAX_CONCURRENT", DefaultMaxConcurrent),
-    }
-}
 
-func getEnvOrDefault(key, defaultVal string) string {
-    if val := os.Getenv(key); val != "" {
-        return val
-    }
-    return defaultVal
-}
+var config *AppConfig
 
-func getEnvAsInt64OrDefault(key string, defaultVal int64) int64 {
-    if val := os.Getenv(key); val != "" {
-        if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-            return i
+func LoadConfig() (*AppConfig, error) {
+    if config != nil {
+        return config, nil
+    }
+
+    config = &AppConfig{
+        Port:            8080,
+        TransferLogFile: "transfers.log",
+        SystemLogFile:   "system.log",
+        DataPath:       "./data",
+        DebugMode:      true,
+        MaxFileSize:    DefaultMaxFileSize,
+        StoragePath:    DefaultStoragePath,
+        LogFile:        DefaultLogFile,
+        RateLimit:      DefaultRateLimit,
+        MaxUploadSize:  DefaultMaxUploadSize,
+        TokenExpiry:    DefaultTokenExpiry,
+        MaxConcurrent:  DefaultMaxConcurrent,
+    }
+
+    if _, err := os.Stat(DefaultConfigFile); err == nil {
+        file, err := ioutil.ReadFile(DefaultConfigFile)
+        if err == nil {
+            err = json.Unmarshal(file, config)
+            if err != nil {
+                return nil, fmt.Errorf("error parsing config file: %w", err)
+            }
         }
     }
-    return defaultVal
-}
 
-func getEnvAsIntOrDefault(key string, defaultVal int) int {
-    if val := os.Getenv(key); val != "" {
-        if i, err := strconv.Atoi(val); err == nil {
-            return i
+    if port := os.Getenv("LUNA_PORT"); port != "" {
+        if p, err := strconv.Atoi(port); err == nil {
+            config.Port = p
         }
     }
-    return defaultVal
-}
 
-func getEnvAsDurationOrDefault(key string, defaultVal time.Duration) time.Duration {
-    if val := os.Getenv(key); val != "" {
-        if d, err := time.ParseDuration(val); err == nil {
-            return d
+    if size := os.Getenv("LUNA_MAX_FILE_SIZE"); size != "" {
+        if s, err := strconv.ParseInt(size, 10, 64); err == nil {
+            config.MaxFileSize = s
         }
     }
-    return defaultVal
-}
 
-func UserStoragePath(username string) string {
-    safeUsername := filepath.Base(username)
-    return filepath.Join(Config.StoragePath, safeUsername)
+    if path := os.Getenv("LUNA_STORAGE_PATH"); path != "" {
+        config.StoragePath = path
+    }
+
+    if logFile := os.Getenv("LUNA_LOG_FILE"); logFile != "" {
+        config.LogFile = logFile
+    }
+
+    if rateLimit := os.Getenv("LUNA_RATE_LIMIT"); rateLimit != "" {
+        if r, err := strconv.Atoi(rateLimit); err == nil {
+            config.RateLimit = r
+        }
+    }
+
+    if maxUploadSize := os.Getenv("LUNAMFT_MAX_UPLOAD"); maxUploadSize != "" {
+        if s, err := strconv.ParseInt(maxUploadSize, 10, 64); err == nil {
+            config.MaxUploadSize = s
+        }
+    }
+
+    if tokenExpiry := os.Getenv("LUNAMFT_TOKEN_EXPIRY"); tokenExpiry != "" {
+        if d, err := time.ParseDuration(tokenExpiry); err == nil {
+            config.TokenExpiry = d
+        }
+    }
+
+    if maxConcurrent := os.Getenv("LUNAMFT_MAX_CONCURRENT"); maxConcurrent != "" {
+        if c, err := strconv.Atoi(maxConcurrent); err == nil {
+            config.MaxConcurrent = c
+        }
+    }
+
+    StoragePath = getEnv("STORAGE_DIR", DefaultStoragePath)
+    config.StoragePath = StoragePath
+
+    if config.Port <= 0 || config.Port > 65535 {
+        return nil, fmt.Errorf("invalid port number: %d", config.Port)
+    }
+
+    if config.MaxFileSize <= 0 {
+        return nil, fmt.Errorf("max file size must be positive")
+    }
+
+    if config.RateLimit <= 0 {
+        return nil, fmt.Errorf("rate limit must be positive")
+    }
+
+    return config, nil
 }
 
 func EnsureStorageExists() error {
-    return os.MkdirAll(Config.StoragePath, 0755)
+    cfg, err := LoadConfig()
+    if err != nil {
+        return err
+    }
+
+    if err := os.MkdirAll(StoragePath, 0755); err != nil {
+        return fmt.Errorf("failed to create storage directory: %w", err)
+    }
+
+    logDir := filepath.Dir(cfg.LogFile)
+    if logDir != "." && logDir != "" {
+        if err := os.MkdirAll(logDir, 0755); err != nil {
+            return fmt.Errorf("failed to create log directory: %w", err)
+        }
+    }
+
+    return nil
 }
 
-func EnsureUserStorageExists(username string) error {
-    userPath := UserStoragePath(username)
+func GetUserStoragePath(username string) string {
+    cfg, _ := LoadConfig()
+    username = strings.Replace(username, "..", "", -1)
+    username = strings.Replace(username, "/", "", -1)
+    username = strings.Replace(username, "\\", "", -1)
+    return filepath.Join(cfg.StoragePath, username)
+}
+
+func EnsureUserStorage(username string) error {
+    userPath := GetUserStoragePath(username)
     return os.MkdirAll(userPath, 0755)
+}
+
+func SaveConfig() error {
+    if config == nil {
+        return fmt.Errorf("no configuration to save")
+    }
+
+    data, err := json.MarshalIndent(config, "", "  ")
+    if err != nil {
+        return fmt.Errorf("error encoding config: %w", err)
+    }
+
+    return ioutil.WriteFile(DefaultConfigFile, data, 0600)
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists && value != "" {
+        return value
+    }
+    return defaultValue
+}
+
+func GetConfig() *AppConfig {
+    if config == nil {
+        _, err := LoadConfig()
+        if err != nil {
+            return &AppConfig{
+                LogFile: "transfers.log",
+            }
+        }
+    }
+    return config
 }

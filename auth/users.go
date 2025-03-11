@@ -2,183 +2,230 @@ package auth
 
 import (
     "crypto/rand"
-    "encoding/base64"
+    "encoding/hex"
     "encoding/json"
     "errors"
-    "golang.org/x/crypto/bcrypt"
+    "fmt"
+    "io/ioutil"
     "os"
-    "path/filepath"
+    "regexp"
+    "sync"
+    "time"
+    "golang.org/x/crypto/bcrypt"
 )
 
 var (
-    ErrUserNotFound    = errors.New("user not found")
-    ErrUserExists      = errors.New("user already exists")
-    ErrInvalidPassword = errors.New("invalid password")
-    ErrInternalServer  = errors.New("internal server error")
+    usersFile     = "users.json"
+    usersMutex    = &sync.RWMutex{}
+    users         = make(map[string]User)
+    apiKeyToUser  = make(map[string]string)
+    ErrUserExists = errors.New("user already exists")
+    ErrWeakPassword = errors.New("password must be at least 8 characters and contain numbers and letters")
+    ErrInvalidCredentials = errors.New("invalid username or password")
 )
 
 type User struct {
-    Username string `json:"username"`
-    Password string `json:"password"`
-    APIKey   string `json:"apiKey"`
+    Username     string    `json:"username"`
+    Password     string    `json:"-"`
+    PasswordHash string    `json:"password_hash"`// Just for storage
+    Email        string    `json:"email"`
+    Role         string    `json:"role"`
+    APIKey       string    `json:"api_key"`
+    CreatedAt    time.Time `json:"created_at"`
+    LastLogin    time.Time `json:"last_login"`
 }
 
-func GetUser(username string) (*User, error) {
-    file, err := os.Open(UsersDB())
-    if err != nil {
-        if os.IsNotExist(err) {
-            return nil, ErrUserNotFound
-        }
-        return nil, ErrInternalServer
+func ValidatePassword(password string) bool {
+    if len(password) < 8 {
+        return false
     }
-    defer file.Close()
-
-    var users []User
-    err = json.NewDecoder(file).Decode(&users)
-    if err != nil {
-        return nil, ErrInternalServer
-    }
-
-    for _, user := range users {
-        if user.Username == username {
-            return &user, nil
-        }
-    }
-
-    return nil, ErrUserNotFound
+    hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
+    hasNumber := regexp.MustCompile(`[0-9]`).MatchString(password)
+    return hasLetter && hasNumber
 }
 
-func LoadUsers() ([]User, error) {
-    file, err := os.Open(UsersDB())
-    if err != nil {
-        if os.IsNotExist(err) {
-            return []User{}, nil
-        }
-        return nil, ErrInternalServer
+func GenerateAPIKey() (string, error) {
+    bytes := make([]byte, 32)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
     }
-    defer file.Close()
+    return hex.EncodeToString(bytes), nil
+}
 
-    var users []User
-    decoder := json.NewDecoder(file)
-    err = decoder.Decode(&users)
+func CreateUser(username, password, email, role string) (User, string, error) {
+    if UserExists(username) {
+        return User{}, "", fmt.Errorf("user already exists")
+    }
+    
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
     if err != nil {
-        return nil, ErrInternalServer
+        return User{}, "", err
+    }
+    
+    apiKey, err := GenerateAPIKey()
+    if err != nil {
+        return User{}, "", err
+    }
+    
+    user := User{
+        Username:     username,
+        PasswordHash: string(hashedPassword),
+        Email:        email,
+        Role:         role,
+        APIKey:       apiKey,
+        CreatedAt:    time.Now(),
+        LastLogin:    time.Time{},
+    }
+    
+    usersMutex.Lock()
+    users[username] = user
+    apiKeyToUser[apiKey] = username
+    usersMutex.Unlock()
+    
+    if err := saveUsers(); err != nil {
+        return User{}, "", err
+    }
+    
+    return user, apiKey, nil
+}
+
+func Authenticate(username, password string) (string, error) {
+    usersMutex.RLock()
+    user, exists := users[username]
+    usersMutex.RUnlock()
+
+    if !exists {
+        return "", ErrInvalidCredentials
+    }
+
+    if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+        return "", ErrInvalidCredentials
+    }
+
+    usersMutex.Lock()
+    user.LastLogin = time.Now()
+    users[username] = user
+    usersMutex.Unlock()
+
+    if err := saveUsers(); err != nil {
+        return "", fmt.Errorf("error updating last login: %w", err)
+    }
+
+    return user.APIKey, nil
+}
+
+func AuthenticateUser(username, password string) (User, string, error) {
+    usersMutex.RLock()
+    user, exists := users[username]
+    usersMutex.RUnlock()
+
+    if !exists {
+        return User{}, "", ErrInvalidCredentials
+    }
+
+    err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+    if err != nil {
+        return User{}, "", ErrInvalidCredentials
+    }
+
+    usersMutex.Lock()
+    user.LastLogin = time.Now()
+    users[username] = user
+    usersMutex.Unlock()
+
+    if err := saveUsers(); err != nil {
+        fmt.Printf("Failed to update last login time: %v\n", err)
+    }
+
+    return user, user.APIKey, nil
+}
+
+func GetUserByAPIKey(apiKey string) (string, bool) {
+    usersMutex.RLock()
+    defer usersMutex.RUnlock()
+    
+    username, exists := apiKeyToUser[apiKey]
+    return username, exists
+}
+
+func LoadUsers() (map[string]User, error) {
+    usersMutex.Lock()
+    defer usersMutex.Unlock()
+
+    if _, err := os.Stat(usersFile); os.IsNotExist(err) {
+        return users, nil
+    }
+
+    data, err := ioutil.ReadFile(usersFile)
+    if err != nil {
+        return nil, fmt.Errorf("error reading users file: %w", err)
+    }
+
+    var loadedUsers []User
+    if err := json.Unmarshal(data, &loadedUsers); err != nil {
+        return nil, fmt.Errorf("error parsing users file: %w", err)
+    }
+
+    users = make(map[string]User)
+    apiKeyToUser = make(map[string]string)
+
+    for _, u := range loadedUsers {
+        users[u.Username] = u
+        apiKeyToUser[u.APIKey] = u.Username
     }
 
     return users, nil
 }
 
-func SaveUser(user *User) error {
-    err := os.MkdirAll(filepath.Dir(UsersDB()), 0755)
+func saveUsers() error {
+    usersList := []User{}
+    for _, user := range users {
+        usersList = append(usersList, user)
+    }
+
+    data, err := json.MarshalIndent(usersList, "", "  ")
     if err != nil {
-        return ErrInternalServer
+        return fmt.Errorf("error encoding users: %w", err)
     }
 
-    var users []User
-    
-    file, err := os.OpenFile(UsersDB(), os.O_RDWR|os.O_CREATE, 0644)
-    if err != nil {
-        return ErrInternalServer
-    }
-    defer file.Close()
-
-    fileInfo, err := file.Stat()
-    if err != nil {
-        return ErrInternalServer
+    tempFile := usersFile + ".tmp"
+    if err := ioutil.WriteFile(tempFile, data, 0600); err != nil {
+        return fmt.Errorf("error writing users file: %w", err)
     }
 
-    if fileInfo.Size() > 0 {
-        err = json.NewDecoder(file).Decode(&users)
-        if err != nil {
-            users = []User{}
-        }
-    }
-
-    userExists := false
-    for i, u := range users {
-        if u.Username == user.Username {
-            users[i] = *user
-            userExists = true
-            break
-        }
-    }
-
-    if !userExists {
-        users = append(users, *user)
-    }
-
-    file.Seek(0, 0)
-    file.Truncate(0)
-    encoder := json.NewEncoder(file)
-    encoder.SetIndent("", "  ")
-    return encoder.Encode(users)
+    return os.Rename(tempFile, usersFile)
 }
 
-func CreateUser(username, password string) (*User, error) {
-    existingUser, err := GetUser(username)
-    if err == nil && existingUser != nil {
-        return nil, ErrUserExists
+func RotateAPIKey(username string) (string, error) {
+    usersMutex.Lock()
+    defer usersMutex.Unlock()
+
+    user, exists := users[username]
+    if (!exists) {
+        return "", fmt.Errorf("user not found")
     }
 
-    hashedPassword, err := HashPass(password)
+    delete(apiKeyToUser, user.APIKey)
+
+    newKey, err := GenerateAPIKey()
     if err != nil {
-        return nil, ErrInternalServer
+        return "", err
     }
 
-    apiKey, err := GenerateAPIKey()
-    if err != nil {
-        return nil, ErrInternalServer
+    user.APIKey = newKey
+    users[username] = user
+    apiKeyToUser[newKey] = username
+
+    if err := saveUsers(); err != nil {
+        return "", err
     }
 
-    user := &User{
-        Username: username,
-        Password: hashedPassword,
-        APIKey:   apiKey,
-    }
-
-    err = SaveUser(user)
-    if err != nil {
-        return nil, ErrInternalServer
-    }
-
-    return user, nil
+    return newKey, nil
 }
 
-func AuthUser(username, password string) (*User, error) {
-    user, err := GetUser(username)
-    if err != nil {
-        return nil, ErrUserNotFound
-    }
-
-    err = DecodePass(user.Password, password)
-    if err != nil {
-        return nil, ErrInvalidPassword
-    }
-
-    return user, nil
-}
-
-func GenerateAPIKey() (string, error) {
-    b := make([]byte, 32)
-    _, err := rand.Read(b)
-    if err != nil {
-        return "", ErrInternalServer
-    }
-    return base64.URLEncoding.EncodeToString(b), nil
-}
-
-func HashPass(password string) (string, error) {
-    hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-    if err != nil {
-        return "", ErrInternalServer
-    }
-    return string(hashedBytes), nil
-}
-
-func DecodePass(hashedPassword, password string) error {
-    return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-}
-
-func UsersDB() string {
-    return "users.json"
+func UserExists(username string) bool {
+    usersMutex.RLock()
+    _, exists := users[username]
+    usersMutex.RUnlock()
+    return exists
 }

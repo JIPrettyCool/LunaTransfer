@@ -1,53 +1,46 @@
 package handlers
 
 import (
-    "LunaMFT/auth"
+    "LunaMFT/config"
+    "LunaMFT/middleware"
     "LunaMFT/utils"
-    "encoding/json"
-    "github.com/gorilla/mux"
     "net/http"
     "os"
     "path/filepath"
+    "github.com/gorilla/mux"
 )
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
-    username := r.Header.Get("Username")
-    apiKey   := r.Header.Get("API-Key")
-    
-    if username == "" || apiKey == "" {
+    username, ok := r.Context().Value(middleware.UsernameContextKey).(string)
+    if !ok {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
 
-    user, err := auth.GetUser(username)
-    if err != nil || user.APIKey != apiKey {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+    vars := mux.Vars(r)
+    filename, ok := vars["filename"]
+    if !ok || filename == "" {
+        http.Error(w, "Filename required", http.StatusBadRequest)
         return
     }
 
-    vars     := mux.Vars(r)
-    filename := vars["filename"]
-    if filename == "" {
-        http.Error(w, "Bad request", http.StatusBadRequest)
-        return
-    }
-    
     sanitizedFilename := filepath.Base(filename)
-
-    filePath := filepath.Join("uploads", sanitizedFilename)
-    if err := os.Remove(filePath); err != nil {
-        if os.IsNotExist(err) {
-            http.Error(w, "File not found", http.StatusNotFound)
-        } else {
-            http.Error(w, "Internal server error", http.StatusInternalServerError)
-        }
+    userDir := filepath.Join(config.StoragePath, username)
+    filePath := filepath.Join(userDir, sanitizedFilename)
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        http.Error(w, "File not found", http.StatusNotFound)
         return
     }
-    utils.LogMetadata("DELETE", sanitizedFilename, user.Username, r.RemoteAddr, 0)
+
+    if err := os.Remove(filePath); err != nil {
+        utils.LogError("DELETE_ERROR", err, username)
+        http.Error(w, "Failed to delete file", http.StatusInternalServerError)
+        return
+    }
+
+    utils.LogFileTransfer("DELETE", sanitizedFilename, username, r.RemoteAddr, 0)
+    go utils.NotifyFileDeleted(username, sanitizedFilename)
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(map[string]string{
-        "status": "success",
-        "file"  : sanitizedFilename,
-    })
+    w.Write([]byte(`{"success": true, "message": "File deleted successfully"}`))
 }

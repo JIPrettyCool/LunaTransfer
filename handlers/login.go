@@ -4,6 +4,7 @@ import (
     "LunaMFT/auth"
     "encoding/json"
     "net/http"
+    "LunaMFT/utils"
 )
 
 type LoginRequest struct {
@@ -12,40 +13,39 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-    Username string `json:"username"`
-    APIKey   string `json:"apiKey"`
+    Success bool   `json:"success"`
+    ApiKey  string `json:"apiKey"`
+    Role    string `json:"role"`
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-    var loginReq LoginRequest
-    
-    if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
-        http.Error(w, "Invalid request", http.StatusBadRequest)
+    var req LoginRequest
+
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-    
-    if loginReq.Username == "" || loginReq.Password == "" {
-        http.Error(w, "Missing required fields", http.StatusBadRequest)
+
+    if req.Username == "" || req.Password == "" {
+        http.Error(w, "Username and password are required", http.StatusBadRequest)
         return
     }
-    
-    user, err := auth.AuthUser(loginReq.Username, loginReq.Password)
+
+    user, apiKey, err := auth.AuthenticateUser(req.Username, req.Password)
     if err != nil {
-        switch err {
-        case auth.ErrUserNotFound, auth.ErrInvalidPassword:
-            http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-        default:
-            http.Error(w, "Authentication failed", http.StatusInternalServerError)
-        }
+        // Log the failed login attempt
+        utils.LogSystem("LOGIN_FAIL", req.Username, r.RemoteAddr, "Invalid credentials")
+        http.Error(w, "Invalid username or password", http.StatusUnauthorized)
         return
     }
-    
-    response := LoginResponse{
-        Username: user.Username,
-        APIKey:   user.APIKey,
-    }
-    
+
+    // Log successful login
+    utils.LogSystem("LOGIN_SUCCESS", req.Username, r.RemoteAddr)
+
     w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(response)
+    json.NewEncoder(w).Encode(LoginResponse{
+        Success: true,
+        ApiKey:  apiKey,
+        Role:    user.Role,
+    })
 }
