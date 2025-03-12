@@ -6,7 +6,6 @@ import (
     "encoding/json"
     "errors"
     "fmt"
-    "io/ioutil"
     "os"
     "regexp"
     "sync"
@@ -156,7 +155,7 @@ func LoadUsers() (map[string]User, error) {
         return users, nil
     }
 
-    data, err := ioutil.ReadFile(usersFile)
+    data, err := os.ReadFile(usersFile)
     if err != nil {
         return nil, fmt.Errorf("error reading users file: %w", err)
     }
@@ -189,7 +188,7 @@ func saveUsers() error {
     }
 
     tempFile := usersFile + ".tmp"
-    if err := ioutil.WriteFile(tempFile, data, 0600); err != nil {
+    if err := os.WriteFile(tempFile, data, 0600); err != nil {
         return fmt.Errorf("error writing users file: %w", err)
     }
 

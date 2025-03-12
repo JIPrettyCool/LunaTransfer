@@ -3,7 +3,6 @@ package config
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
     "os"
     "path/filepath"
     "strconv"
@@ -65,7 +64,7 @@ func LoadConfig() (*AppConfig, error) {
     }
 
     if _, err := os.Stat(DefaultConfigFile); err == nil {
-        file, err := ioutil.ReadFile(DefaultConfigFile)
+        file, err := os.ReadFile(DefaultConfigFile)
         if err == nil {
             err = json.Unmarshal(file, config)
             if err != nil {
@@ -179,7 +178,7 @@ func SaveConfig() error {
         return fmt.Errorf("error encoding config: %w", err)
     }
 
-    return ioutil.WriteFile(DefaultConfigFile, data, 0600)
+    return os.WriteFile(DefaultConfigFile, data, 0600)
 }
 
 func getEnv(key, defaultValue string) string {
