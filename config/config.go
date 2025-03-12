@@ -100,19 +100,19 @@ func LoadConfig() (*AppConfig, error) {
         }
     }
 
-    if maxUploadSize := os.Getenv("LUNAMFT_MAX_UPLOAD"); maxUploadSize != "" {
+    if maxUploadSize := os.Getenv("LunaTransfer_MAX_UPLOAD"); maxUploadSize != "" {
         if s, err := strconv.ParseInt(maxUploadSize, 10, 64); err == nil {
             config.MaxUploadSize = s
         }
     }
 
-    if tokenExpiry := os.Getenv("LUNAMFT_TOKEN_EXPIRY"); tokenExpiry != "" {
+    if tokenExpiry := os.Getenv("LunaTransfer_TOKEN_EXPIRY"); tokenExpiry != "" {
         if d, err := time.ParseDuration(tokenExpiry); err == nil {
             config.TokenExpiry = d
         }
     }
 
-    if maxConcurrent := os.Getenv("LUNAMFT_MAX_CONCURRENT"); maxConcurrent != "" {
+    if maxConcurrent := os.Getenv("LunaTransfer_MAX_CONCURRENT"); maxConcurrent != "" {
         if c, err := strconv.Atoi(maxConcurrent); err == nil {
             config.MaxConcurrent = c
         }

@@ -1,9 +1,9 @@
 package handlers
 
 import (
-    "LunaMFT/config"
-    "LunaMFT/utils"
-    "LunaMFT/middleware"
+    "LunaTransfer/config"
+    "LunaTransfer/utils"
+    "LunaTransfer/middleware"
     "fmt"
     "io"
     "net/http"

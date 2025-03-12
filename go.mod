@@ -1,4 +1,4 @@
-module LunaMFT
+module LunaTransfer
 
 go 1.23.2
 

@@ -1,7 +1,7 @@
 package middleware
 
 import (
-    "LunaMFT/auth"
+    "LunaTransfer/auth"
     "context"
     "net/http"
     "strings"

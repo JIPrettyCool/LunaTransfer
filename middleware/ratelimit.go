@@ -1,7 +1,7 @@
 package middleware
 
 import (
-    "LunaMFT/config"
+    "LunaTransfer/config"
     "golang.org/x/time/rate"
     "net/http"
     "sync"

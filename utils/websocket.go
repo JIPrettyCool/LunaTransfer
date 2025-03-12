@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"LunaMFT/models"
+	"LunaTransfer/models"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -60,7 +60,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	welcomeMsg := Notification{
 		Type:      "CONNECTED",
-		Message:   "Connected to LunaMFT notifications",
+		Message:   "Connected to LunaTransfer notifications",
 		Timestamp: time.Now(),
 	}
 

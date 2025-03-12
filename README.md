@@ -1,4 +1,4 @@
-# Luna MANAGED FILE TRANSFER
+# **LunaTransfer**
 
 Self Hostable Managed File Transfer app
 
@@ -65,23 +65,4 @@ wscat -c "ws://localhost:8080/ws" -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ## TODO
-- ~~List uploaded files~~
-- Metadata support
-- File search
-- Ability to create directories to organize
-- File share link
-- Frontend (Flutter or Lynx)
-- Drag n Drop uploads
-- Timeline
-- Preview of file
-- ~~Websocket improvements~~
-- Monitoring, health checks
-- User settings configuration
-- More secure key than APIKey, maybe JWT
-- Docker support
-- ~~Input Validation for API inputs~~
-- Chunked uploads
-- Batch uploads
-- API Key change due time
-- Security headers CSP, CORS
-- SQL Database
+[View my Notion page](https://jiprettycool.notion.site/)

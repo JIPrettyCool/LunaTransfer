@@ -1,8 +1,8 @@
 package utils
 
 import (
-    "LunaMFT/config"
-    "LunaMFT/models"
+    "LunaTransfer/config"
+    "LunaTransfer/models"
     "bufio"
     "fmt"
     "os"

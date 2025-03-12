@@ -1,9 +1,9 @@
 package handlers
 
 import (
-    "LunaMFT/auth"
-    "LunaMFT/config"
-    "LunaMFT/utils"
+    "LunaTransfer/auth"
+    "LunaTransfer/config"
+    "LunaTransfer/utils"
     "encoding/json"
     "net/http"
     "os"

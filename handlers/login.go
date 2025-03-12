@@ -1,10 +1,10 @@
 package handlers
 
 import (
-    "LunaMFT/auth"
+    "LunaTransfer/auth"
     "encoding/json"
     "net/http"
-    "LunaMFT/utils"
+    "LunaTransfer/utils"
 )
 
 type LoginRequest struct {

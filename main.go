@@ -1,11 +1,11 @@
 package main
 
 import (
-    "LunaMFT/auth"
-    "LunaMFT/config"
-    "LunaMFT/handlers"
-    "LunaMFT/middleware"
-    "LunaMFT/utils"
+    "LunaTransfer/auth"
+    "LunaTransfer/config"
+    "LunaTransfer/handlers"
+    "LunaTransfer/middleware"
+    "LunaTransfer/utils"
     "context"
     "fmt"
     "log"
@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-    logger := log.New(os.Stdout, "LunaMFT: ", log.LstdFlags|log.Lshortfile)
+    logger := log.New(os.Stdout, "LunaTransfer: ", log.LstdFlags|log.Lshortfile)
     appConfig, err := config.LoadConfig()
     if err != nil {
         logger.Fatalf("Failed to load configuration: %v", err)
@@ -63,7 +63,7 @@ func main() {
     }
 
     go func() {
-        logger.Printf("LunaMFT Server is running on :%d", appConfig.Port)
+        logger.Printf("LunaTransfer Server is running on :%d", appConfig.Port)
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             logger.Fatalf("Server failed: %v", err)
         }
