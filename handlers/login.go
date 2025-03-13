@@ -20,17 +20,14 @@ type LoginResponse struct {
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
     var req LoginRequest
-
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        utils.LogError("LOGIN_ERROR", err, "unknown", "Invalid request body")
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-
-    if req.Username == "" || req.Password == "" {
-        http.Error(w, "Username and password are required", http.StatusBadRequest)
-        return
-    }
-
+    
+    // No need to check for empty username/password as middleware already did this
+    
     user, _, err := auth.AuthenticateUser(req.Username, req.Password)
     if err != nil {
         utils.LogSystem("LOGIN_FAIL", req.Username, r.RemoteAddr, "Invalid credentials")

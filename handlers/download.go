@@ -20,7 +20,7 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
         return
     }
     vars := mux.Vars(r)
-    filename, ok := vars["filename"]
+    filename := vars["filename"]
     if !ok || filename == "" {
         http.Error(w, "Filename required", http.StatusBadRequest)
         return

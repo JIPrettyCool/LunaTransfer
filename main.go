@@ -47,21 +47,31 @@ func main() {
     }
 
     r := mux.NewRouter()    
-    r.HandleFunc("/signup", handlers.CreateUserHandler).Methods("POST")
-    r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
+
+    // Non-authenticated routes with validation
+    r.Handle("/signup", middleware.ValidationMiddleware(middleware.ValidateSignupRequest)(http.HandlerFunc(handlers.CreateUserHandler))).Methods("POST")
+    r.Handle("/login", middleware.ValidationMiddleware(middleware.ValidateLoginRequest)(http.HandlerFunc(handlers.LoginHandler))).Methods("POST")
     r.Handle("/logout", middleware.AuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))).Methods("POST")
-    
+
     api := r.PathPrefix("/api").Subrouter()
     api.Use(middleware.AuthMiddleware)
     api.Use(middleware.RateLimitMiddleware)
-    
-    api.HandleFunc("/upload", handlers.UploadFile).Methods("POST")
-    api.HandleFunc("/download/{filename}", handlers.DownloadFile).Methods("GET")
-    api.HandleFunc("/delete/{filename}", handlers.DeleteFile).Methods("DELETE")
-    api.HandleFunc("/files", handlers.ListFiles).Methods("GET")
-    api.HandleFunc("/refresh", handlers.RefreshTokenHandler).Methods("POST")
-    api.HandleFunc("/dashboard", handlers.DashboardHandler).Methods("GET")
-    
+
+    // Add validation to API routes
+    maxUploadSize := int64(100 * 1024 * 1024) // 100MB
+    api.Handle("/upload", 
+        middleware.MaxBodySizeMiddleware(maxUploadSize)(
+            middleware.ParamValidationMiddleware(middleware.ValidateUploadRequest)(
+                http.HandlerFunc(handlers.UploadFile),
+            ),
+        ),
+    ).Methods("POST")
+    api.Handle("/download/{filename}", middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(http.HandlerFunc(handlers.DownloadFile))).Methods("GET")
+    api.Handle("/delete/{filename}", middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(http.HandlerFunc(handlers.DeleteFile))).Methods("DELETE")
+    api.Handle("/files", middleware.ParamValidationMiddleware(middleware.ValidateListFilesRequest)(http.HandlerFunc(handlers.ListFiles))).Methods("GET")
+    api.Handle("/refresh", http.HandlerFunc(handlers.RefreshTokenHandler)).Methods("POST")
+    api.Handle("/dashboard", http.HandlerFunc(handlers.DashboardHandler)).Methods("GET")
+
     r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
 
     srv := &http.Server{

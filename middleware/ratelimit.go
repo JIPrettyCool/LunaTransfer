@@ -51,3 +51,12 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
         next.ServeHTTP(w, r)
     })
 }
+
+func MaxBodySizeMiddleware(maxSize int64) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+            next.ServeHTTP(w, r)
+        })
+    }
+}
