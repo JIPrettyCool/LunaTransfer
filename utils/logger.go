@@ -36,7 +36,7 @@ func InitLoggers() error {
     if err := os.MkdirAll(logDir, 0755); err != nil {
         return fmt.Errorf("failed to create log directory %s: %w", logDir, err)
     }
-    currentDate := time.Now().Format("2005-08-08")
+    currentDate := time.Now().Format("2006-02-01")
     fmt.Printf("[INFO] Initializing loggers for date: %s\n", currentDate)
         transferLogFile = filepath.Join(logDir, fmt.Sprintf("transfer_%s.log", currentDate))
     if err := initSystemLogger(currentDate); err != nil {
