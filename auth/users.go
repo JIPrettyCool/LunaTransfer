@@ -1,12 +1,15 @@
 package auth
 
 import (
+    "LunaTransfer/config"
     "crypto/rand"
     "encoding/hex"
     "encoding/json"
     "errors"
     "fmt"
+    "log"
     "os"
+    "path/filepath"
     "regexp"
     "sync"
     "time"
@@ -93,7 +96,7 @@ func Authenticate(username, password string) (string, error) {
     user, exists := users[username]
     usersMutex.RUnlock()
 
-    if !exists {
+    if (!exists) {
         return "", ErrInvalidCredentials
     }
 
@@ -118,7 +121,7 @@ func AuthenticateUser(username, password string) (User, string, error) {
     user, exists := users[username]
     usersMutex.RUnlock()
 
-    if !exists {
+    if (!exists) {
         return User{}, "", ErrInvalidCredentials
     }
 
@@ -227,4 +230,43 @@ func UserExists(username string) bool {
     _, exists := users[username]
     usersMutex.RUnlock()
     return exists
+}
+
+// DeleteUser removes a user from the system
+func DeleteUser(username string) error {
+    usersMutex.Lock()
+    defer usersMutex.Unlock()
+
+    // Check if user exists
+    user, exists := users[username]
+    if !exists {
+        return fmt.Errorf("user not found: %s", username)
+    }
+
+    // Remove user from maps
+    delete(users, username)
+    delete(apiKeyToUser, user.APIKey)
+
+    // Save changes to disk
+    if err := saveUsers(); err != nil {
+        return fmt.Errorf("failed to save users after deletion: %w", err)
+    }
+
+    // Load config for storage directory
+    appConfig, err := config.LoadConfig()
+    if err != nil {
+        log.Printf("Warning: Failed to load config to delete user storage: %v", err)
+        return nil // User is deleted from memory and disk, so return success
+    }
+
+    // Delete user storage directory if it exists
+    userStorageDir := filepath.Join(appConfig.StorageDirectory, username)
+    if _, err := os.Stat(userStorageDir); err == nil {
+        if err := os.RemoveAll(userStorageDir); err != nil {
+            // Log this error but don't fail the operation
+            log.Printf("Warning: Failed to delete user's storage directory: %v", err)
+        }
+    }
+
+    return nil
 }

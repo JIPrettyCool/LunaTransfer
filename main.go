@@ -74,6 +74,38 @@ func main() {
 
     r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
 
+    admin := api.PathPrefix("/admin").Subrouter()
+    admin.Use(middleware.RoleMiddleware(auth.RoleAdmin))
+    admin.HandleFunc("/users", handlers.ListUsersHandler).Methods("GET")
+    admin.HandleFunc("/users/{username}", handlers.DeleteUserHandler).Methods("DELETE")
+    admin.HandleFunc("/system/stats", handlers.SystemStatsHandler).Methods("GET")
+
+    api.Handle("/files", 
+        middleware.PermissionMiddleware("read", "files")(
+            middleware.ParamValidationMiddleware(middleware.ValidateListFilesRequest)(
+                http.HandlerFunc(handlers.ListFiles),
+            ),
+        ),
+    ).Methods("GET")
+
+    api.Handle("/upload", 
+        middleware.PermissionMiddleware("write", "files")(
+            middleware.MaxBodySizeMiddleware(maxUploadSize)(
+                middleware.ParamValidationMiddleware(middleware.ValidateUploadRequest)(
+                    http.HandlerFunc(handlers.UploadFile),
+                ),
+            ),
+        ),
+    ).Methods("POST")
+
+    api.Handle("/delete/{filename}", 
+        middleware.PermissionMiddleware("delete", "files")(
+            middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(
+                http.HandlerFunc(handlers.DeleteFile),
+            ),
+        ),
+    ).Methods("DELETE")
+
     srv := &http.Server{
         Addr:         fmt.Sprintf(":%d", appConfig.Port),
         WriteTimeout: 15 * time.Second,

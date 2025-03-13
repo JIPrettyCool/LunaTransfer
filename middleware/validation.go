@@ -181,9 +181,7 @@ func ValidateFileDownloadRequest(r *http.Request) error {
     return nil
 }
 
-// ValidateUploadRequest checks file metadata before processing
 func ValidateUploadRequest(r *http.Request) error {
-    // Check content type
     if (!strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data")) {
         return errors.New("content type must be multipart/form-data")
     }
@@ -192,13 +190,10 @@ func ValidateUploadRequest(r *http.Request) error {
     return nil
 }
 
-// ValidateRefreshRequest doesn't need to validate anything in the body
 func ValidateRefreshRequest(r *http.Request) error {
-    // The auth middleware already checks the JWT token
     return nil
 }
 
-// Helper function to create parameter validators for routes with URL params
 func CreateURLParamValidator(paramName string, validationFn func(string) error) ParamValidationFunc {
     return func(r *http.Request) error {
         vars := mux.Vars(r)
@@ -211,7 +206,6 @@ func CreateURLParamValidator(paramName string, validationFn func(string) error) 
     }
 }
 
-// Filename validation function
 func ValidateFilename(filename string) error {
     if filename == "" {
         return errors.New("filename is required")
@@ -244,7 +238,6 @@ func ValidateFilename(filename string) error {
     return nil
 }
 
-// Validate a filename in URL parameters
 func ValidateFilenameParam(r *http.Request) error {
     vars := mux.Vars(r)
     filename, ok := vars["filename"]
@@ -268,10 +261,8 @@ func ValidateFilenameParam(r *http.Request) error {
     return nil
 }
 
-// Validate query parameters for file listing
 func ValidateListFilesRequest(r *http.Request) error {
     // Optional validation for sort, filter, or pagination parameters
     return nil
 }
 
-// Add more parameter validation functions as needed

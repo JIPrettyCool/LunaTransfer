@@ -1,6 +1,7 @@
 package handlers
 
 import (
+    "LunaTransfer/common"
     "LunaTransfer/auth"
     "LunaTransfer/utils"
     "encoding/json"
@@ -45,64 +46,65 @@ func validateEmail(email string) bool {
 }
 
 func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-    fmt.Println("CreateUser handler called") // Console debug
-    
     var req CreateUserRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        utils.LogError("USER_CREATE_ERROR", err, "Invalid request body")
+        utils.LogError("USER_CREATE_ERROR", err, "unknown", "Invalid request body")
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-
-    // Validate required fields
+    
     if req.Username == "" || req.Password == "" {
-        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("missing required fields"), req.Username)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("missing required fields"), "anonymous", req.Username)
         http.Error(w, "Username and password are required", http.StatusBadRequest)
         return
     }
-
-    // Validate username and password
+    
     if !validateUsername(req.Username) {
-        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid username format"), req.Username)
-        http.Error(w, "Invalid username format", http.StatusBadRequest)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid username format"), "anonymous", req.Username)
+        http.Error(w, "Username must be 3-32 characters and contain only letters, numbers, and underscores", http.StatusBadRequest)
         return
     }
-
+    
     if !validatePassword(req.Password) {
-        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("password does not meet requirements"), req.Username)
-        http.Error(w, "Password must be at least 8 characters with uppercase, lowercase, and number", http.StatusBadRequest)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("weak password"), "anonymous", req.Username)
+        http.Error(w, "Password must be at least 8 characters with uppercase, lowercase, and numbers", http.StatusBadRequest)
         return
     }
-
-    // Check if email is valid if provided
+    
     if req.Email != "" && !validateEmail(req.Email) {
-        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid email format"), req.Username)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid email format"), "anonymous", req.Username)
         http.Error(w, "Invalid email format", http.StatusBadRequest)
         return
     }
-
-    // Set default role if not provided
+    userRole, ok := common.GetRoleFromContext(r.Context())
+    
     if req.Role == "" {
-        req.Role = "user"
+        req.Role = auth.RoleUser
     }
-
-    // Try to create user
+        if req.Role == auth.RoleAdmin {
+        if !ok || !auth.IsAdmin(userRole) {
+            utils.LogSystem("ACCESS_DENIED", "unknown", r.RemoteAddr, 
+                "Attempted to create user with elevated privileges")
+            http.Error(w, "You don't have permission to create users with this role", http.StatusForbidden)
+            return
+        }
+    }
+    
     user, apiKey, err := auth.CreateUser(req.Username, req.Password, req.Role, req.Email)
     if err != nil {
         utils.LogError("USER_CREATE_ERROR", err, req.Username)
         http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
         return
     }
-
-    // Log success with explicit information
+    
     utils.LogSystem("USER_CREATED", "system", r.RemoteAddr, 
-        fmt.Sprintf("Created user: %s with role: %s", user.Username, user.Role))
-
+    fmt.Sprintf("User %s created with role %s", user.Username, user.Role))
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
-    json.NewEncoder(w).Encode(CreateUserResponse{
-        Success: true,
-        Message: "User created successfully",
-        ApiKey:  apiKey,
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "success": true,
+        "message": "User created successfully",
+        "apiKey":  apiKey,
+        "role":    user.Role,
     })
 }
