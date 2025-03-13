@@ -60,7 +60,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	storageLimit := int64(1024 * 1024 * 1024) // 1GB in bytes
+	storageLimit := int64(1024 * 1024 * 1024) // 1GB
 	storagePercent := float64(stats.TotalSize) / float64(storageLimit) * 100
 	
 	response := DashboardResponse{

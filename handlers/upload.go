@@ -2,7 +2,6 @@ package handlers
 
 import (
     "LunaTransfer/config"
-    "LunaTransfer/models"
     "LunaTransfer/utils"
     "LunaTransfer/common"
     "fmt"
@@ -12,29 +11,43 @@ import (
     "path/filepath"
     "strings"
     "time"
+    "encoding/json"
 )
 
 func UploadFile(w http.ResponseWriter, r *http.Request) {
     start := time.Now()
-    // Get who's uploading
+    
+    // Get username from context
     username, ok := common.GetUsernameFromContext(r.Context())
     if !ok {
+        utils.LogError("UPLOAD_ERROR", fmt.Errorf("unauthorized access"), "unknown", r.RemoteAddr)
         http.Error(w, "Not logged in", http.StatusUnauthorized)
         return
     }
-    user := username
-
-    // 100MB max - might need to increase this later
-    maxSize := 100 * 1024 * 1024
-    err := r.ParseMultipartForm(int64(maxSize))
+    
+    // Log that we're starting an upload
+    utils.LogSystem("UPLOAD_START", username, r.RemoteAddr, "Upload process initiated")
+    
+    // Parse form with size limit
+    appConfig, err := config.LoadConfig()
     if err != nil {
-        http.Error(w, "File too big! Max is 100MB", http.StatusBadRequest)
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed to load config")
+        http.Error(w, "Server configuration error", http.StatusInternalServerError)
         return
     }
-
+    
+    maxSize := appConfig.MaxFileSize
+    err = r.ParseMultipartForm(maxSize)
+    if err != nil {
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed to parse form")
+        http.Error(w, "Error parsing form", http.StatusBadRequest)
+        return
+    }
+    
     // Get the file
     f, h, err := r.FormFile("file")
     if err != nil {
+        utils.LogError("UPLOAD_ERROR", err, username, "No file in request")
         http.Error(w, "No file in request", http.StatusBadRequest)
         return
     }
@@ -42,79 +55,63 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
     
     fname := h.Filename
     
-    // Quick security check - we don't want any directory traversal attacks xd
+    // Security check
     if strings.Contains(fname, "..") || strings.Contains(fname, "/") || strings.Contains(fname, "\\") {
+        utils.LogError("UPLOAD_SECURITY", fmt.Errorf("path traversal attempt"), username, fname)
         http.Error(w, "Invalid filename", http.StatusBadRequest)
         return
     }
     
-    // Load config for storage path
-    appConfig, err := config.LoadConfig()
-    if err != nil {
-        http.Error(w, "Server configuration error", http.StatusInternalServerError)
-        return
-    }
-    
-    // Create user folder if it doesn't exist
-    userFolder := filepath.Join(appConfig.StorageDirectory, user)
+    // Create user directory
+    userFolder := filepath.Join(appConfig.StorageDirectory, username)
     if _, err := os.Stat(userFolder); os.IsNotExist(err) {
-        // TODO: set better permissions for production
-        os.MkdirAll(userFolder, 0755)
+        if err := os.MkdirAll(userFolder, 0755); err != nil {
+            utils.LogError("UPLOAD_ERROR", err, username, "Failed to create user folder")
+            http.Error(w, "Storage error", http.StatusInternalServerError)
+            return
+        }
     }
-    
-    // Where to save the file
     savePath := filepath.Join(userFolder, fname)
-    
+    // Check for existing file
     if _, err := os.Stat(savePath); err == nil {
-        // TODO: add option to prevent overwrites or add version numbers rn it just overwrites
+        utils.LogSystem("UPLOAD_OVERWRITE", username, r.RemoteAddr, fmt.Sprintf("File %s will be overwritten", fname))
     }
-    
+    // Create destination file
     destFile, err := os.Create(savePath)
     if err != nil {
-        utils.LogError("FILE_CREATE_ERR", err, user)
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed to create file")
         http.Error(w, "Couldn't save your file", http.StatusInternalServerError)
         return
     }
     defer destFile.Close()
-    
+    // Copy file data
     written, err := io.Copy(destFile, f)
     if err != nil {
         destFile.Close()
         os.Remove(savePath)
-        utils.LogError("WRITE_ERR", err, user)
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed during file write")
         http.Error(w, "Upload failed midway", http.StatusInternalServerError)
         return
     }
-    
+    // Log success
     uploadTime := time.Since(start)
-    
     utils.LogTransfer(utils.TransferLog{
-        Username:    user,
+        Username:    username,
         Filename:    fname,
         Size:        written,
-        Action:      "UPLOAD", // I prefer strings over constants here, easier to read logs
+        Action:      string(utils.OpUpload),
         Timestamp:   time.Now(),
         Success:     true,
         RemoteIP:    r.RemoteAddr,
         UserAgent:   r.UserAgent(),
         ElapsedTime: uploadTime,
     })
-    
-    // Let user know via WS if they're connected
-    // Don't block for this - it's just a nice to have
-    go func() {
-        notification := models.Notification{
-            Type:      models.NoteFileUploaded,
-            Filename:  fname,
-            Message:   fmt.Sprintf("File uploaded: %s (%d bytes)", fname, written),
-            Timestamp: time.Now(),
-        }
-        utils.NotifyUser(user, notification)
-    }()
-
-    resp := fmt.Sprintf(`{"ok":true,"message":"Upload successful","file":"%s","bytes":%d,"took":"%v"}`,
-        fname, written, uploadTime.Round(time.Millisecond))
-        
+    // Respond to client
     w.Header().Set("Content-Type", "application/json")
-    w.Write([]byte(resp))
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "success": true,
+        "filename": fname,
+        "size": written,
+        "elapsed": uploadTime.String(),
+    })
 }

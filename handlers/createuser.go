@@ -2,12 +2,10 @@ package handlers
 
 import (
     "LunaTransfer/auth"
-    "LunaTransfer/config"
     "LunaTransfer/utils"
     "encoding/json"
+    "fmt"
     "net/http"
-    "os"
-    "path/filepath"
     "regexp"
     "strings"
 )
@@ -47,57 +45,59 @@ func validateEmail(email string) bool {
 }
 
 func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+    fmt.Println("CreateUser handler called") // Console debug
+    
     var req CreateUserRequest
-
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        utils.LogError("USER_CREATE_ERROR", err, "Invalid request body")
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
 
+    // Validate required fields
+    if req.Username == "" || req.Password == "" {
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("missing required fields"), req.Username)
+        http.Error(w, "Username and password are required", http.StatusBadRequest)
+        return
+    }
+
+    // Validate username and password
     if !validateUsername(req.Username) {
-        http.Error(w, "Invalid username (3-32 chars, alphanumeric with underscore)", http.StatusBadRequest)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid username format"), req.Username)
+        http.Error(w, "Invalid username format", http.StatusBadRequest)
         return
     }
 
     if !validatePassword(req.Password) {
-        http.Error(w, "Password must be at least 8 characters with uppercase, lowercase and number", http.StatusBadRequest)
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("password does not meet requirements"), req.Username)
+        http.Error(w, "Password must be at least 8 characters with uppercase, lowercase, and number", http.StatusBadRequest)
         return
     }
 
+    // Check if email is valid if provided
     if req.Email != "" && !validateEmail(req.Email) {
+        utils.LogError("USER_CREATE_ERROR", fmt.Errorf("invalid email format"), req.Username)
         http.Error(w, "Invalid email format", http.StatusBadRequest)
         return
     }
 
-    if req.Role == "" || (req.Role != "admin" && req.Role != "user") {
+    // Set default role if not provided
+    if req.Role == "" {
         req.Role = "user"
     }
 
-    if auth.UserExists(req.Username) {
-        http.Error(w, "Username already exists", http.StatusConflict)
-        return
-    }
-
-    user, apiKey, err := auth.CreateUser(req.Username, req.Password, req.Email, req.Role)
+    // Try to create user
+    user, apiKey, err := auth.CreateUser(req.Username, req.Password, req.Role, req.Email)
     if err != nil {
-        if err == auth.ErrUserExists {
-            utils.LogSystem("USER_CREATE_FAIL", req.Username, r.RemoteAddr, "User already exists")
-            http.Error(w, "User already exists", http.StatusConflict)
-        } else {
-            utils.LogError("USER_CREATE_ERROR", err, req.Username)
-            http.Error(w, "Failed to create user", http.StatusInternalServerError)
-        }
+        utils.LogError("USER_CREATE_ERROR", err, req.Username)
+        http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
         return
     }
 
-    // Log successful user creation
-    utils.LogSystem("USER_CREATED", req.Username, r.RemoteAddr, req.Role)
+    // Log success with explicit information
+    utils.LogSystem("USER_CREATED", "system", r.RemoteAddr, 
+        fmt.Sprintf("Created user: %s with role: %s", user.Username, user.Role))
 
-    userDir := filepath.Join(config.StoragePath, user.Username)
-    if err := os.MkdirAll(userDir, 0755); err != nil {
-        http.Error(w, "Failed to create user directory", http.StatusInternalServerError)
-        return
-    }
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
     json.NewEncoder(w).Encode(CreateUserResponse{

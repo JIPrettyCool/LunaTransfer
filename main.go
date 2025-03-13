@@ -12,23 +12,29 @@ import (
     "net/http"
     "os"
     "os/signal"
+    "path/filepath"
     "time"
     "github.com/gorilla/mux"
 )
 
 func main() {
     logger := log.New(os.Stdout, "LunaTransfer: ", log.LstdFlags|log.Lshortfile)
+    fmt.Println("LunaTransfer starting up...")
     appConfig, err := config.LoadConfig()
     if err != nil {
         logger.Fatalf("Failed to load configuration: %v", err)
     }
+        logPath := filepath.Join(appConfig.LogDirectory, "logs") 
+    fmt.Printf("Initializing logs in: %s\n", logPath)
+    
     if err := utils.InitLoggers(); err != nil {
         logger.Fatalf("Failed to initialize loggers: %v", err)
     }
     defer utils.CloseLoggers()
-    
-    // Initialize JWT with config settings
-    utils.InitJWT(appConfig)
+    utils.LogSystem("SERVER_START", "system", "localhost", 
+        fmt.Sprintf("Server starting on port %d", appConfig.Port))
+    fmt.Println("Loggers initialized successfully")
+        utils.InitJWT(appConfig)
     
     users, err := auth.LoadUsers()
     if err != nil {
@@ -40,8 +46,7 @@ func main() {
         logger.Fatalf("Failed to create storage directory: %v", err)
     }
 
-    r := mux.NewRouter()
-    
+    r := mux.NewRouter()    
     r.HandleFunc("/signup", handlers.CreateUserHandler).Methods("POST")
     r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
     r.Handle("/logout", middleware.AuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))).Methods("POST")
@@ -66,7 +71,7 @@ func main() {
         IdleTimeout:  60 * time.Second,
         Handler:      r,
     }
-
+    logger.Printf("Starting LunaTransfer Server on port %d", appConfig.Port)
     go func() {
         logger.Printf("LunaTransfer Server is running on :%d", appConfig.Port)
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -79,7 +84,6 @@ func main() {
     <-c
     ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
-    
     logger.Println("Shutting down server...")
     if err := srv.Shutdown(ctx); err != nil {
         logger.Fatalf("Server forced to shutdown: %v", err)

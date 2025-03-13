@@ -28,7 +28,7 @@ var (
 
 type AppConfig struct {
     Port             int    `json:"port"`
-    StorageDirectory string `json:"storage_directory"` // Ensure this field exists
+    StorageDirectory string `json:"storage_directory"`
     MaxFileSize      int64  `json:"max_file_size"` 
     LogDirectory     string `json:"log_directory"`
     JWTSecret        string `json:"jwt_secret"`
@@ -54,8 +54,8 @@ func LoadConfig() (*AppConfig, error) {
 
     config = &AppConfig{
         Port:             8080,
-        StorageDirectory: "storage", // This must match the field name being used
-        MaxFileSize:      100 * 1024 * 1024, // 100MB default
+        StorageDirectory: "storage",
+        MaxFileSize:      100 * 1024 * 1024, // 100MB
         LogDirectory:     "logs",
         JWTSecret:        "luna-transfer-secret-key",
         TokenExpiryHours: 24,
