@@ -1,124 +1,124 @@
 package utils
 
 import (
-    "LunaTransfer/config"
     "LunaTransfer/models"
     "bufio"
     "fmt"
+    "log"
     "os"
+    "path/filepath"
     "strconv"
     "strings"
-    "sync"
+    // Removed unused "sync" import
     "time"
 )
 
 var (
-    transferLogFile *os.File
-    systemLogFile   *os.File
-    logMutex        sync.Mutex
+    systemLogger   *log.Logger
+    errorLogger    *log.Logger
+    accessLogger   *log.Logger
+    transferLogger *log.Logger
+    logFiles       []*os.File
+    transferLogFile string // Added this variable
 )
 
 func InitLoggers() error {
-    cfg := config.GetConfig()
-    
-    tFile, err := os.OpenFile(cfg.TransferLogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        return fmt.Errorf("failed to open transfer log: %w", err)
+    logDir := "logs"
+    if err := os.MkdirAll(logDir, 0755); err != nil {
+        return err
     }
-    transferLogFile = tFile
+
+    currentDate := time.Now().Format("2006-01-02")
     
-    sFile, err := os.OpenFile(cfg.SystemLogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    // Define the transferLogFile path here
+    transferLogFile = filepath.Join(logDir, fmt.Sprintf("transfer_%s.log", currentDate))
+    
+    systemFile, err := os.OpenFile(
+        filepath.Join(logDir, fmt.Sprintf("system_%s.log", currentDate)),
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+        0644,
+    )
     if err != nil {
-        transferLogFile.Close()
-        return fmt.Errorf("failed to open system log: %w", err)
+        return err
     }
-    systemLogFile = sFile
-    fmt.Println("✓ Log files successfully initialized:")
-    fmt.Printf("  - Transfer log: %s\n", cfg.TransferLogFile)
-    fmt.Printf("  - System log: %s\n", cfg.SystemLogFile)
+    logFiles = append(logFiles, systemFile)
+    systemLogger = log.New(systemFile, "SYSTEM: ", log.Ldate|log.Ltime)
+    
+    errorFile, err := os.OpenFile(
+        filepath.Join(logDir, fmt.Sprintf("error_%s.log", currentDate)),
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+        0644,
+    )
+    if err != nil {
+        return err
+    }
+    logFiles = append(logFiles, errorFile)
+    errorLogger = log.New(errorFile, "ERROR: ", log.Ldate|log.Ltime)
+    
+    accessFile, err := os.OpenFile(
+        filepath.Join(logDir, fmt.Sprintf("access_%s.log", currentDate)),
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+        0644,
+    )
+    if err != nil {
+        return err
+    }
+    logFiles = append(logFiles, accessFile)
+    accessLogger = log.New(accessFile, "ACCESS: ", log.Ldate|log.Ltime)
+    
+    // Add the transfer logger
+    transferFile, err := os.OpenFile(
+        transferLogFile,
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+        0644,
+    )
+    if err != nil {
+        return err
+    }
+    logFiles = append(logFiles, transferFile)
+    transferLogger = log.New(transferFile, "TRANSFER: ", log.Ldate|log.Ltime)
+    
     return nil
 }
 
-func LogTransfer(log TransferLog) {
-    timestamp := log.Timestamp.Unix()
-    elapsedMs := float64(log.ElapsedTime.Milliseconds())
-    logEntry := fmt.Sprintf("%d|%s|%s|%s|%s|%d|%t|%s|%.2fms\n",
-        timestamp,
-        log.Action,
-        log.Filename,
-        log.Username,
-        log.RemoteIP,
-        log.Size,
-        log.Success,
-        log.UserAgent,
-        elapsedMs,
-    )
+// Add the missing appendToFile function
+func appendToFile(filepath string, content string) error {
+    f, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
     
-    appendToFile(transferLogFile, logEntry)
-}
-
-func LogSystem(eventType, username, remoteAddr string, details ...string) {
-    timestamp := time.Now().Unix()
-    detailsStr := ""
-    if len(details) > 0 {
-        detailsStr = "|" + strings.Join(details, "|")
+    if _, err := f.WriteString(content); err != nil {
+        return err
     }
     
-    logEntry := fmt.Sprintf("%d|%s|%s|%s%s\n",
-        timestamp,
-        eventType,
-        username,
-        remoteAddr,
-        detailsStr,
-    )
-    
-    appendToFile(systemLogFile, logEntry)
-    if config.GetConfig().DebugMode {
-        fmt.Printf("[SYSTEM] %s - %s from %s %s\n", 
-            time.Now().Format("2006-01-02 15:04:05"),
-            eventType, 
-            username,
-            remoteAddr)
-    }
+    return nil
 }
 
-func LogError(errorType string, err error, username string) {
-    timestamp := time.Now().Unix()
-    logEntry := fmt.Sprintf("%d|ERROR|%s|%s|%s\n",
-        timestamp,
-        errorType,
-        username,
-        err.Error(),
-    )
-    
-    appendToFile(systemLogFile, logEntry)
-    fmt.Printf("[ERROR] %s - %s: %s\n",
-        time.Now().Format("2005-08-08 15:04:05"),
-        errorType,
-        err.Error())
-}
-
-func appendToFile(file *os.File, entry string) {
-    if file == nil {
-        fmt.Print(entry)
+func LogSystem(event, username, ip string, message ...any) {
+    if systemLogger == nil {
         return
     }
-    
-    logMutex.Lock()
-    defer logMutex.Unlock()
-    
-    file.WriteString(entry)
-    file.Sync()
-}
-func CloseLoggers() {
-    if transferLogFile != nil {
-        transferLogFile.Close()
-    }
-    if systemLogFile != nil {
-        systemLogFile.Close()
-    }
+    systemLogger.Printf("[%s] [User: %s] [IP: %s] %s", event, username, ip, fmt.Sprint(message...))
 }
 
+func LogError(event string, err error, details ...any) {
+    if errorLogger == nil {
+        return
+    }
+    errorLogger.Printf("[%s] Error: %v - Details: %s", event, err, fmt.Sprint(details...))
+}
+
+func LogAccess(method, path, username, ip string, statusCode int, duration time.Duration) {
+    if accessLogger == nil {
+        return
+    }
+    accessLogger.Printf("[%s %s] [User: %s] [IP: %s] [Status: %d] [Duration: %v]", 
+        method, path, username, ip, statusCode, duration)
+}
+
+// TransferOperation defines the types of transfer operations
 type TransferOperation string
 
 const (
@@ -127,6 +127,7 @@ const (
     OpDelete   TransferOperation = "DELETE"
 )
 
+// TransferLog contains information about file transfers
 type TransferLog struct {
     Username    string
     Filename    string
@@ -139,10 +140,32 @@ type TransferLog struct {
     ElapsedTime time.Duration
 }
 
+// LogTransfer records file transfer activities (uploads, downloads, deletes)
+func LogTransfer(t TransferLog) {
+    if transferLogger == nil {
+        return
+    }
+    
+    status := "SUCCESS"
+    if !t.Success {
+        status = "FAILED"
+    }
+    
+    // Format: [ACTION] [STATUS] [USER] [FILE] [SIZE] [IP] [AGENT] [DURATION]
+    transferLogger.Printf("[%s] [%s] [User: %s] [File: %s] [Size: %d bytes] [IP: %s] [Agent: %s] [Duration: %v]",
+        t.Action, status, t.Username, t.Filename, t.Size, t.RemoteIP, t.UserAgent, t.ElapsedTime.Round(time.Millisecond))
+    
+    // Also write to the structured file format for backward compatibility
+    LogFileTransfer(t.Action, t.Filename, t.Username, t.RemoteIP, t.Size)
+}
+
 func GetUserActivity(username string, limit int) ([]models.FileActivity, error) {
     activities := []models.FileActivity{}
     
-    logFile, err := os.Open(config.GetConfig().LogFile)
+    // No need to load config since we're using the global transferLogFile
+    
+    // Use transferLogFile directly
+    logFile, err := os.Open(transferLogFile)
     if err != nil {
         if os.IsNotExist(err) {
             return activities, nil
@@ -197,6 +220,7 @@ func GetUserActivity(username string, limit int) ([]models.FileActivity, error) 
     return activities, nil
 }
 
+// LogFileTransfer writes a structured log entry for file transfers
 func LogFileTransfer(operation, filename, username, remoteAddr string, fileSize int64) {
     timestamp := time.Now().Unix()
     logEntry := fmt.Sprintf("%d|%s|%s|%s|%s|%d\n",
@@ -208,9 +232,13 @@ func LogFileTransfer(operation, filename, username, remoteAddr string, fileSize 
         fileSize,
     )
     
-    appendToFile(transferLogFile, logEntry)
+    // Use the appendToFile function we defined
+    if err := appendToFile(transferLogFile, logEntry); err != nil {
+        LogError("LOG_APPEND_ERROR", err, "Failed to append to transfer log")
+    }
 }
 
+// LogMetadata writes a structured log entry for metadata operations
 func LogMetadata(operation, filename, username, remoteAddr string, timestamp int64) {
     logEntry := fmt.Sprintf("%d|%s|%s|%s|%s|\n",
         timestamp,
@@ -220,5 +248,13 @@ func LogMetadata(operation, filename, username, remoteAddr string, timestamp int
         remoteAddr,
     )
     
-    appendToFile(transferLogFile, logEntry)
+    if err := appendToFile(transferLogFile, logEntry); err != nil {
+        LogError("LOG_APPEND_ERROR", err, "Failed to append to transfer log")
+    }
+}
+
+func CloseLoggers() {
+    for _, f := range logFiles {
+        f.Close()
+    }
 }

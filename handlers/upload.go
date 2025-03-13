@@ -4,7 +4,7 @@ import (
     "LunaTransfer/config"
     "LunaTransfer/models"
     "LunaTransfer/utils"
-    "LunaTransfer/middleware"
+    "LunaTransfer/common"
     "fmt"
     "io"
     "net/http"
@@ -17,18 +17,12 @@ import (
 func UploadFile(w http.ResponseWriter, r *http.Request) {
     start := time.Now()
     // Get who's uploading
-    username := r.Context().Value(middleware.UsernameContextKey)
-    if username == nil {
+    username, ok := common.GetUsernameFromContext(r.Context())
+    if !ok {
         http.Error(w, "Not logged in", http.StatusUnauthorized)
         return
     }
-    
-    user, ok := username.(string)
-    if !ok {
-        // This shouldn't happen but just in case
-        http.Error(w, "Invalid session", http.StatusInternalServerError)
-        return
-    }
+    user := username
 
     // 100MB max - might need to increase this later
     maxSize := 100 * 1024 * 1024
@@ -54,8 +48,15 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
         return
     }
     
+    // Load config for storage path
+    appConfig, err := config.LoadConfig()
+    if err != nil {
+        http.Error(w, "Server configuration error", http.StatusInternalServerError)
+        return
+    }
+    
     // Create user folder if it doesn't exist
-    userFolder := filepath.Join(config.StoragePath, user)
+    userFolder := filepath.Join(appConfig.StorageDirectory, user)
     if _, err := os.Stat(userFolder); os.IsNotExist(err) {
         // TODO: set better permissions for production
         os.MkdirAll(userFolder, 0755)

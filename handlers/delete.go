@@ -2,7 +2,7 @@ package handlers
 
 import (
     "LunaTransfer/config"
-    "LunaTransfer/middleware"
+    "LunaTransfer/common"
     "LunaTransfer/utils"
     "net/http"
     "os"
@@ -11,9 +11,9 @@ import (
 )
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
-    username, ok := r.Context().Value(middleware.UsernameContextKey).(string)
+    username, ok := common.GetUsernameFromContext(r.Context())
     if !ok {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        http.Error(w, "Not logged in", http.StatusUnauthorized)
         return
     }
 

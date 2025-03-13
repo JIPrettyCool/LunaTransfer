@@ -1,16 +1,11 @@
 package middleware
 
 import (
-    "LunaTransfer/auth"
+    "LunaTransfer/common"
+    "LunaTransfer/utils"
     "context"
     "net/http"
     "strings"
-)
-
-type ContextKey string
-const (
-    UsernameContextKey ContextKey = "username"
-    APIKeyContextKey   ContextKey = "api_key"
 )
 
 func AuthMiddleware(next http.Handler) http.Handler {
@@ -23,31 +18,25 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
         parts := strings.SplitN(authHeader, " ", 2)
         if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-            http.Error(w, "Authorization header must be in format: Bearer {api_key}", http.StatusUnauthorized)
+            http.Error(w, "Authorization header must be in format: Bearer {token}", http.StatusUnauthorized)
             return
         }
 
-        apiKey := parts[1]
-        username, valid := auth.GetUserByAPIKey(apiKey)
-        if (!valid) {
-            http.Error(w, "Invalid API key", http.StatusUnauthorized)
+        tokenString := parts[1]
+        claims, err := utils.ValidateJWT(tokenString)
+        if err != nil {
+            if err == utils.ErrExpiredToken {
+                http.Error(w, "Token expired", http.StatusUnauthorized)
+            } else {
+                http.Error(w, "Invalid token", http.StatusUnauthorized)
+            }
             return
         }
 
         ctx := r.Context()
-        ctx = context.WithValue(ctx, UsernameContextKey, username)
-        ctx = context.WithValue(ctx, APIKeyContextKey, apiKey)
+        ctx = context.WithValue(ctx, common.UsernameContextKey, claims.Username)
+        ctx = context.WithValue(ctx, common.RoleContextKey, claims.Role)
         
         next.ServeHTTP(w, r.WithContext(ctx))
     })
-}
-
-func GetUsernameFromContext(ctx context.Context) (string, bool) {
-    username, ok := ctx.Value(UsernameContextKey).(string)
-    return username, ok
-}
-
-func GetAPIKeyFromContext(ctx context.Context) (string, bool) {
-    apiKey, ok := ctx.Value(APIKeyContextKey).(string)
-    return apiKey, ok
 }

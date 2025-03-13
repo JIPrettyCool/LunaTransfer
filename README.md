@@ -12,7 +12,7 @@ curl -X POST http://localhost:8080/signup \
   -d '{"username":"test1","password":"Test1Password123","email":"test@example.com","role":"user"}'
 ```
 
-### Login (Get API Key)
+### Login (Get JWT Token)
 
 ```bash
 curl -X POST http://localhost:8080/login \

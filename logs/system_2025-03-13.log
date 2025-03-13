@@ -1,0 +1,5 @@
+SYSTEM: 2025/03/13 16:51:04 [JWT_INIT] [User: system] [IP: localhost] JWT initialized with 24 hour expiry
+SYSTEM: 2025/03/13 16:51:42 [LOGIN_SUCCESS] [User: testuser] [IP: [::1]:57937] 
+SYSTEM: 2025/03/13 17:00:57 [JWT_INIT] [User: system] [IP: localhost] JWT initialized with 24 hour expiry
+SYSTEM: 2025/03/13 17:01:38 [USER_CREATED] [User: test1] [IP: [::1]:58282] user
+SYSTEM: 2025/03/13 17:02:14 [LOGIN_SUCCESS] [User: test1] [IP: [::1]:58303] 

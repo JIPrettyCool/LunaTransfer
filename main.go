@@ -27,6 +27,9 @@ func main() {
     }
     defer utils.CloseLoggers()
     
+    // Initialize JWT with config settings
+    utils.InitJWT(appConfig)
+    
     users, err := auth.LoadUsers()
     if err != nil {
         logger.Fatalf("Failed to load users: %v", err)
@@ -41,6 +44,7 @@ func main() {
     
     r.HandleFunc("/signup", handlers.CreateUserHandler).Methods("POST")
     r.HandleFunc("/login", handlers.LoginHandler).Methods("POST")
+    r.Handle("/logout", middleware.AuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))).Methods("POST")
     
     api := r.PathPrefix("/api").Subrouter()
     api.Use(middleware.AuthMiddleware)
@@ -50,6 +54,7 @@ func main() {
     api.HandleFunc("/download/{filename}", handlers.DownloadFile).Methods("GET")
     api.HandleFunc("/delete/{filename}", handlers.DeleteFile).Methods("DELETE")
     api.HandleFunc("/files", handlers.ListFiles).Methods("GET")
+    api.HandleFunc("/refresh", handlers.RefreshTokenHandler).Methods("POST")
     api.HandleFunc("/dashboard", handlers.DashboardHandler).Methods("GET")
     
     r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")

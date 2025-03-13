@@ -2,9 +2,9 @@ package handlers
 
 import (
     "LunaTransfer/auth"
+    "LunaTransfer/utils"
     "encoding/json"
     "net/http"
-    "LunaTransfer/utils"
 )
 
 type LoginRequest struct {
@@ -14,7 +14,7 @@ type LoginRequest struct {
 
 type LoginResponse struct {
     Success bool   `json:"success"`
-    ApiKey  string `json:"apiKey"`
+    Token   string `json:"token"`
     Role    string `json:"role"`
 }
 
@@ -31,21 +31,27 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    user, apiKey, err := auth.AuthenticateUser(req.Username, req.Password)
+    user, _, err := auth.AuthenticateUser(req.Username, req.Password)
     if err != nil {
-        // Log the failed login attempt
         utils.LogSystem("LOGIN_FAIL", req.Username, r.RemoteAddr, "Invalid credentials")
         http.Error(w, "Invalid username or password", http.StatusUnauthorized)
         return
     }
 
-    // Log successful login
-    utils.LogSystem("LOGIN_SUCCESS", req.Username, r.RemoteAddr)
+    // Generate JWT token
+    token, err := utils.GenerateJWT(user.Username, user.Role)
+    if err != nil {
+        utils.LogError("JWT_GENERATION_ERROR", err, req.Username)
+        http.Error(w, "Failed to generate authentication token", http.StatusInternalServerError)
+        return
+    }
+
+    utils.LogSystem("LOGIN_SUCCESS", req.Username, r.RemoteAddr, "")
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(LoginResponse{
         Success: true,
-        ApiKey:  apiKey,
+        Token:   token,
         Role:    user.Role,
     })
 }

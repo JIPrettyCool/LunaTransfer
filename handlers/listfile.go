@@ -2,7 +2,7 @@ package handlers
 
 import (
     "LunaTransfer/config"
-    "LunaTransfer/middleware"
+    "LunaTransfer/common"
     "encoding/json"
     "net/http"
     "os"
@@ -19,7 +19,7 @@ type FileInfo struct {
 }
 
 func ListFiles(w http.ResponseWriter, r *http.Request) {
-    username, ok := r.Context().Value(middleware.UsernameContextKey).(string)
+    username, ok := r.Context().Value(common.UsernameContextKey).(string)
     if !ok {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return

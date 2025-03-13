@@ -2,8 +2,8 @@ package handlers
 
 import (
     "LunaTransfer/config"
+    "LunaTransfer/common"
     "LunaTransfer/utils"
-    "LunaTransfer/middleware"
     "fmt"
     "io"
     "net/http"
@@ -14,9 +14,9 @@ import (
 )
 
 func DownloadFile(w http.ResponseWriter, r *http.Request) {
-    username, ok := r.Context().Value(middleware.UsernameContextKey).(string)
+    username, ok := common.GetUsernameFromContext(r.Context())
     if !ok {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        http.Error(w, "Not logged in", http.StatusUnauthorized)
         return
     }
     vars := mux.Vars(r)

@@ -1,0 +1,4 @@
+TRANSFER: 2025/03/13 17:02:26 [UPLOAD] [SUCCESS] [User: test1] [File: file.txt] [Size: 15 bytes] [IP: [::1]:58308] [Agent: curl/8.10.1] [Duration: 1ms]
+1741874546|UPLOAD|file.txt|test1|[::1]:58308|15
+1741874672|DOWNLOAD|file.txt|test1|[::1]:58382|
+1741874736|DELETE|file.txt|test1|[::1]:58424|0

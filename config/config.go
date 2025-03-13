@@ -27,12 +27,16 @@ var (
 )
 
 type AppConfig struct {
-    Port            int    `json:"port"`
+    Port             int    `json:"port"`
+    StorageDirectory string `json:"storage_directory"` // Ensure this field exists
+    MaxFileSize      int64  `json:"max_file_size"` 
+    LogDirectory     string `json:"log_directory"`
+    JWTSecret        string `json:"jwt_secret"`
+    TokenExpiryHours int    `json:"token_expiry_hours"`
     TransferLogFile string `json:"transferLogFile"`
     SystemLogFile   string `json:"systemLogFile"`
     DataPath       string `json:"dataPath"`
     DebugMode      bool   `json:"debugMode"`
-    MaxFileSize    int64  `json:"max_file_size"`
     StoragePath    string `json:"storage_path"`
     LogFile        string `json:"log_file"`
     RateLimit      int    `json:"rate_limit"`
@@ -49,12 +53,16 @@ func LoadConfig() (*AppConfig, error) {
     }
 
     config = &AppConfig{
-        Port:            8080,
+        Port:             8080,
+        StorageDirectory: "storage", // This must match the field name being used
+        MaxFileSize:      100 * 1024 * 1024, // 100MB default
+        LogDirectory:     "logs",
+        JWTSecret:        "luna-transfer-secret-key",
+        TokenExpiryHours: 24,
         TransferLogFile: "transfers.log",
         SystemLogFile:   "system.log",
         DataPath:       "./data",
         DebugMode:      true,
-        MaxFileSize:    DefaultMaxFileSize,
         StoragePath:    DefaultStoragePath,
         LogFile:        DefaultLogFile,
         RateLimit:      DefaultRateLimit,
@@ -136,16 +144,17 @@ func LoadConfig() (*AppConfig, error) {
 }
 
 func EnsureStorageExists() error {
-    cfg, err := LoadConfig()
+    config, err := LoadConfig()
     if err != nil {
         return err
     }
 
-    if err := os.MkdirAll(StoragePath, 0755); err != nil {
-        return fmt.Errorf("failed to create storage directory: %w", err)
+    // Create main storage directory
+    if err := os.MkdirAll(config.StorageDirectory, 0755); err != nil {
+        return err
     }
 
-    logDir := filepath.Dir(cfg.LogFile)
+    logDir := filepath.Dir(config.LogFile)
     if logDir != "." && logDir != "" {
         if err := os.MkdirAll(logDir, 0755); err != nil {
             return fmt.Errorf("failed to create log directory: %w", err)

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"LunaTransfer/models"
+	"LunaTransfer/common"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -39,7 +40,7 @@ type Notification struct {
 }
 
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	username, ok := r.Context().Value("username").(string)
+	username, ok := common.GetUsernameFromContext(r.Context())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
