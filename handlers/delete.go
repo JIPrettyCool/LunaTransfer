@@ -4,9 +4,12 @@ import (
     "LunaTransfer/config"
     "LunaTransfer/common"
     "LunaTransfer/utils"
+    "encoding/json"
+    "fmt"
     "net/http"
     "os"
     "path/filepath"
+    "strings"
     "github.com/gorilla/mux"
 )
 
@@ -18,29 +21,66 @@ func DeleteFile(w http.ResponseWriter, r *http.Request) {
     }
 
     vars := mux.Vars(r)
-    filename, ok := vars["filename"]
-    if !ok || filename == "" {
-        http.Error(w, "Filename required", http.StatusBadRequest)
+    filePath, ok := vars["filename"]
+    if !ok || filePath == "" {
+        http.Error(w, "File path required", http.StatusBadRequest)
+        return
+    }
+    filePath = strings.Replace(filePath, "%2F", "/", -1)
+    cleanPath := filepath.Clean(filePath)
+    if strings.Contains(cleanPath, "..") {
+        utils.LogError("DELETE_ERROR", fmt.Errorf("path traversal attempt"), username, "Attempted path traversal")
+        http.Error(w, "Invalid file path", http.StatusBadRequest)
         return
     }
 
-    sanitizedFilename := filepath.Base(filename)
-    userDir := filepath.Join(config.StoragePath, username)
-    filePath := filepath.Join(userDir, sanitizedFilename)
-    if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        http.Error(w, "File not found", http.StatusNotFound)
+    appConfig, err := config.LoadConfig()
+    if err != nil {
+        utils.LogError("DELETE_ERROR", err, username, "Failed to load configuration")
+        http.Error(w, "Server configuration error", http.StatusInternalServerError)
+        return
+    }
+    userDir := filepath.Join(appConfig.StorageDirectory, username)
+    fullPath := filepath.Join(userDir, cleanPath)
+    fileInfo, err := os.Stat(fullPath)
+    if os.IsNotExist(err) {
+        http.Error(w, "File or directory not found", http.StatusNotFound)
+        return
+    }
+    var isDir bool
+    if fileInfo.IsDir() {
+        isDir = true
+        err = os.RemoveAll(fullPath)
+    } else {
+        isDir = false
+        err = os.Remove(fullPath)
+    }
+
+    if err != nil {
+        utils.LogError("DELETE_ERROR", err, username, fmt.Sprintf("Failed to delete %s", cleanPath))
+        http.Error(w, "Failed to delete file or directory", http.StatusInternalServerError)
         return
     }
 
-    if err := os.Remove(filePath); err != nil {
-        utils.LogError("DELETE_ERROR", err, username)
-        http.Error(w, "Failed to delete file", http.StatusInternalServerError)
-        return
+    if isDir {
+        utils.LogSystem("DIRECTORY_DELETED", username, r.RemoteAddr, fmt.Sprintf("Deleted directory: %s", cleanPath))
+    } else {
+        utils.LogFileTransfer("DELETE", cleanPath, username, r.RemoteAddr, 0)
+        go utils.NotifyFileDeleted(username, cleanPath)
     }
 
-    utils.LogFileTransfer("DELETE", sanitizedFilename, username, r.RemoteAddr, 0)
-    go utils.NotifyFileDeleted(username, sanitizedFilename)
     w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    w.Write([]byte(`{"success": true, "message": "File deleted successfully"}`))
+    var message string
+    if isDir {
+        message = "Directory deleted successfully"
+    } else {
+        message = "File deleted successfully"
+    }
+    response := map[string]interface{}{
+        "success": true,
+        "message": message,
+        "path":    cleanPath,
+        "isDir":   isDir,
+    }
+    json.NewEncoder(w).Encode(response)
 }

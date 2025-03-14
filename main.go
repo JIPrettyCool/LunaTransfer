@@ -49,6 +49,7 @@ func main() {
     r := mux.NewRouter()    
 
     // Non-authenticated routes with validation
+    r.HandleFunc("/setup", handlers.SetupHandler).Methods("POST")
     r.Handle("/signup", middleware.ValidationMiddleware(middleware.ValidateSignupRequest)(http.HandlerFunc(handlers.CreateUserHandler))).Methods("POST")
     r.Handle("/login", middleware.ValidationMiddleware(middleware.ValidateLoginRequest)(http.HandlerFunc(handlers.LoginHandler))).Methods("POST")
     r.Handle("/logout", middleware.AuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))).Methods("POST")
@@ -98,13 +99,21 @@ func main() {
         ),
     ).Methods("POST")
 
-    api.Handle("/delete/{filename}", 
+    api.Handle("/delete/{filename:.*}", 
         middleware.PermissionMiddleware("delete", "files")(
             middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(
                 http.HandlerFunc(handlers.DeleteFile),
             ),
         ),
     ).Methods("DELETE")
+
+    api.Handle("/directory", 
+        middleware.PermissionMiddleware("write", "files")(
+            middleware.ValidationMiddleware(middleware.ValidateDirectoryRequest)(
+                http.HandlerFunc(handlers.CreateDirectoryHandler),
+            ),
+        ),
+    ).Methods("POST")
 
     srv := &http.Server{
         Addr:         fmt.Sprintf(":%d", appConfig.Port),

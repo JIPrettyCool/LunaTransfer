@@ -244,16 +244,12 @@ func ValidateFilenameParam(r *http.Request) error {
     if !ok || filename == "" {
         return errors.New("filename is required")
     }
-    
-    // Path traversal prevention
-    if strings.Contains(filename, "..") || 
-       strings.Contains(filename, "/") || 
-       strings.Contains(filename, "\\") {
-        return errors.New("invalid filename format")
+    filename = strings.Replace(filename, "%2F", "/", -1)
+    if strings.Contains(filename, "..") {
+        return errors.New("invalid filename format - path traversal detected")
     }
     
-    // Basic filename validation
-    validFilename := regexp.MustCompile(`^[a-zA-Z0-9_\-. ()]+$`)
+    validFilename := regexp.MustCompile(`^[a-zA-Z0-9_\-./() ]+$`)
     if !validFilename.MatchString(filename) {
         return errors.New("filename contains invalid characters")
     }
@@ -263,6 +259,34 @@ func ValidateFilenameParam(r *http.Request) error {
 
 func ValidateListFilesRequest(r *http.Request) error {
     // Optional validation for sort, filter, or pagination parameters
+    return nil
+}
+
+func ValidateDirectoryRequest(body []byte) error {
+    var req struct {
+        Path string `json:"path"`
+        Name string `json:"name"`
+    }
+    
+    if err := json.Unmarshal(body, &req); err != nil {
+        return errors.New("invalid JSON format")
+    }
+    
+    if req.Name == "" {
+        return errors.New("directory name is required")
+    }
+    
+    invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+    for _, char := range invalidChars {
+        if strings.Contains(req.Name, char) {
+            return errors.New("directory name contains invalid characters")
+        }
+    }
+    
+    if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+        return errors.New("invalid path - path traversal detected")
+    }
+    
     return nil
 }
 

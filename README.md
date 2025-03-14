@@ -4,12 +4,24 @@ Self Hostable Managed File Transfer app
 
 ## API Usage Examples
 
-### Create User
+### Signup
 
 ```bash
 curl -X POST http://localhost:8080/signup \
   -H "Content-Type: application/json" \
   -d '{"username":"test1","password":"Test1Password123","email":"test@example.com","role":"user"}'
+```
+
+### Setup (Admin signup)
+
+```bash
+curl -X POST http://localhost:8080/setup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "YourStrongPassword123",
+    "email": "admin@example.com"
+  }'
 ```
 
 ### Login (Get JWT Token)
@@ -38,15 +50,25 @@ curl -X POST http://localhost:8080/api/refresh \
 
 ```bash
 curl -X POST http://localhost:8080/api/upload \
-  -H "Authorization: Bearer YOUR_JWT_KEY" \
-  -F "file=@/path/to/your/file.txt"
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@/path/to/your/file.txt" \
+  -F "path=photos/vacation2023"
 ```
 
 ### List Files
 
 ```bash
-curl -X GET http://localhost:8080/api/files \
-  -H "Authorization: Bearer YOUR_JWT_KEY"
+curl -X GET "http://localhost:8080/api/files?path=photos/vacation2023" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Create Directory
+
+```bash
+curl -X POST http://localhost:8080/api/directory \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"photos", "name":"vacation2023"}'
 ```
 
 ### Download File

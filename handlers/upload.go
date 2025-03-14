@@ -16,19 +16,37 @@ import (
 
 func UploadFile(w http.ResponseWriter, r *http.Request) {
     start := time.Now()
-    
-    // Get username from context
+    if err := r.ParseMultipartForm(32 << 20); err != nil {
+        utils.LogError("UPLOAD_ERROR", err, "unknown", "Failed to parse form")
+        http.Error(w, "Failed to parse form", http.StatusBadRequest)
+        return
+    }
     username, ok := common.GetUsernameFromContext(r.Context())
     if !ok {
         utils.LogError("UPLOAD_ERROR", fmt.Errorf("unauthorized access"), "unknown", r.RemoteAddr)
-        http.Error(w, "Not logged in", http.StatusUnauthorized)
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+    utils.LogSystem("UPLOAD_START", username, r.RemoteAddr, "Upload process initiated")
+    file, header, err := r.FormFile("file")
+    if err != nil {
+        utils.LogError("UPLOAD_ERROR", err, username, "No file provided")
+        http.Error(w, "No file provided", http.StatusBadRequest)
+        return
+    }
+    defer file.Close()
+    path := r.FormValue("path")
+    if path == "" {
+        path = "."
+    }
+    
+    path = filepath.Clean(path)
+    if strings.Contains(path, "..") {
+        utils.LogError("UPLOAD_ERROR", fmt.Errorf("path traversal attempt"), username)
+        http.Error(w, "Invalid path", http.StatusBadRequest)
         return
     }
     
-    // Log that we're starting an upload
-    utils.LogSystem("UPLOAD_START", username, r.RemoteAddr, "Upload process initiated")
-    
-    // Parse form with size limit
     appConfig, err := config.LoadConfig()
     if err != nil {
         utils.LogError("UPLOAD_ERROR", err, username, "Failed to load config")
@@ -36,69 +54,39 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    maxSize := appConfig.MaxFileSize
-    err = r.ParseMultipartForm(maxSize)
-    if err != nil {
-        utils.LogError("UPLOAD_ERROR", err, username, "Failed to parse form")
-        http.Error(w, "Error parsing form", http.StatusBadRequest)
+    userStorageDir := filepath.Join(appConfig.StorageDirectory, username)
+    targetDir := filepath.Join(userStorageDir, path)
+    if err := os.MkdirAll(targetDir, 0755); err != nil {
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed to create user folder")
+        http.Error(w, "Failed to create directory", http.StatusInternalServerError)
         return
     }
+    filename := filepath.Clean(header.Filename)
+    filePath := filepath.Join(targetDir, filename)
     
-    // Get the file
-    f, h, err := r.FormFile("file")
-    if err != nil {
-        utils.LogError("UPLOAD_ERROR", err, username, "No file in request")
-        http.Error(w, "No file in request", http.StatusBadRequest)
-        return
-    }
-    defer f.Close()
-    
-    fname := h.Filename
-    
-    // Security check
-    if strings.Contains(fname, "..") || strings.Contains(fname, "/") || strings.Contains(fname, "\\") {
-        utils.LogError("UPLOAD_SECURITY", fmt.Errorf("path traversal attempt"), username, fname)
-        http.Error(w, "Invalid filename", http.StatusBadRequest)
-        return
-    }
-    
-    // Create user directory
-    userFolder := filepath.Join(appConfig.StorageDirectory, username)
-    if _, err := os.Stat(userFolder); os.IsNotExist(err) {
-        if err := os.MkdirAll(userFolder, 0755); err != nil {
-            utils.LogError("UPLOAD_ERROR", err, username, "Failed to create user folder")
-            http.Error(w, "Storage error", http.StatusInternalServerError)
-            return
-        }
-    }
-    savePath := filepath.Join(userFolder, fname)
-    // Check for existing file
-    if _, err := os.Stat(savePath); err == nil {
-        utils.LogSystem("UPLOAD_OVERWRITE", username, r.RemoteAddr, fmt.Sprintf("File %s will be overwritten", fname))
-    }
-    // Create destination file
-    destFile, err := os.Create(savePath)
+    dst, err := os.Create(filePath)
     if err != nil {
         utils.LogError("UPLOAD_ERROR", err, username, "Failed to create file")
-        http.Error(w, "Couldn't save your file", http.StatusInternalServerError)
+        http.Error(w, "Failed to create file", http.StatusInternalServerError)
         return
     }
-    defer destFile.Close()
-    // Copy file data
-    written, err := io.Copy(destFile, f)
+    defer dst.Close()
+    
+    size, err := io.Copy(dst, file)
     if err != nil {
-        destFile.Close()
-        os.Remove(savePath)
         utils.LogError("UPLOAD_ERROR", err, username, "Failed during file write")
-        http.Error(w, "Upload failed midway", http.StatusInternalServerError)
+        http.Error(w, "Failed to save file", http.StatusInternalServerError)
         return
     }
-    // Log success
+    
     uploadTime := time.Since(start)
+    utils.LogSystem("UPLOAD_SUCCESS", username, r.RemoteAddr, 
+        fmt.Sprintf("Uploaded file %s to %s (size: %d bytes)", filename, path, size))
+    
     utils.LogTransfer(utils.TransferLog{
         Username:    username,
-        Filename:    fname,
-        Size:        written,
+        Filename:    filename,
+        Size:        size,
         Action:      string(utils.OpUpload),
         Timestamp:   time.Now(),
         Success:     true,
@@ -106,12 +94,14 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
         UserAgent:   r.UserAgent(),
         ElapsedTime: uploadTime,
     })
-    // Respond to client
+    
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]interface{}{
         "success": true,
-        "filename": fname,
-        "size": written,
+        "message": "File uploaded successfully",
+        "filename": filename,
+        "path": path,
+        "size": size,
         "elapsed": uploadTime.String(),
     })
 }

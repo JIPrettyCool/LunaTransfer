@@ -24,6 +24,7 @@ var (
     ErrUserExists = errors.New("user already exists")
     ErrWeakPassword = errors.New("password must be at least 8 characters and contain numbers and letters")
     ErrInvalidCredentials = errors.New("invalid username or password")
+    ErrUsersFileNotFound  = errors.New("users file not found")
 )
 
 type User struct {

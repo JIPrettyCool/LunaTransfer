@@ -90,7 +90,7 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
         }
     }
     
-    user, apiKey, err := auth.CreateUser(req.Username, req.Password, req.Role, req.Email)
+    user, apiKey, err := auth.CreateUser(req.Username, req.Password, req.Email, req.Role)
     if err != nil {
         utils.LogError("USER_CREATE_ERROR", err, req.Username)
         http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
