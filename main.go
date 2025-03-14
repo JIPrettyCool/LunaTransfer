@@ -106,6 +106,14 @@ func main() {
         ),
     ).Methods("POST")
 
+    api.Handle("/search", 
+        middleware.PermissionMiddleware("read", "files")(
+            middleware.ParamValidationMiddleware(middleware.ValidateSearchRequest)(
+                http.HandlerFunc(handlers.SearchFilesHandler),
+            ),
+        ),
+    ).Methods("GET")
+
     r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
 
     admin := api.PathPrefix("/admin").Subrouter()

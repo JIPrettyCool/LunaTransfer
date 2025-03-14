@@ -12,19 +12,16 @@ import (
     "path/filepath"
     "regexp"
     "strings"
+    "strconv"
+    "time"
 )
 
-// For body validation (existing)
 type ValidationFunc func(body []byte) error
-
-// Add a new type for request parameter validation
 type ParamValidationFunc func(r *http.Request) error
 
-// ValidationMiddleware for request body validation
 func ValidationMiddleware(validationFunc ValidationFunc) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            // Read the body if there is one
             var bodyBytes []byte
             var err error
             
@@ -37,17 +34,14 @@ func ValidationMiddleware(validationFunc ValidationFunc) func(http.Handler) http
                 }
                 r.Body.Close()
                 
-                // This call is now correct since ValidationFunc accepts []byte
                 if err := validationFunc(bodyBytes); err != nil {
                     utils.LogError("VALIDATION_ERROR", err, r.RemoteAddr)
                     http.Error(w, err.Error(), http.StatusBadRequest)
                     return
                 }
                 
-                // Restore the body for the next handler
                 r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
             } else {
-                // For non-JSON requests or no body, still run validation with nil bytes
                 if err := validationFunc(nil); err != nil {
                     utils.LogError("VALIDATION_ERROR", err, r.RemoteAddr)
                     http.Error(w, err.Error(), http.StatusBadRequest)
@@ -60,7 +54,6 @@ func ValidationMiddleware(validationFunc ValidationFunc) func(http.Handler) http
     }
 }
 
-// ParamValidationMiddleware for URL parameter validation
 func ParamValidationMiddleware(validationFunc func(*http.Request) error) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +280,39 @@ func ValidateDirectoryRequest(body []byte) error {
         return errors.New("invalid path - path traversal detected")
     }
     
+    return nil
+}
+
+func ValidateSearchRequest(r *http.Request) error {
+    query := r.URL.Query()
+    term := query.Get("term")
+    if term == "" {
+        return errors.New("search term is required")
+    }
+    path := query.Get("path")
+    if path != "" && strings.Contains(path, "..") {
+        return errors.New("invalid path - contains path traversal")
+    }
+    if minSize := query.Get("minSize"); minSize != "" {
+        if _, err := strconv.ParseInt(minSize, 10, 64); err != nil {
+            return errors.New("minSize must be a valid number")
+        }
+    }
+    if maxSize := query.Get("maxSize"); maxSize != "" {
+        if _, err := strconv.ParseInt(maxSize, 10, 64); err != nil {
+            return errors.New("maxSize must be a valid number")
+        }
+    }
+    if after := query.Get("after"); after != "" {
+        if _, err := time.Parse("2006-01-02", after); err != nil {
+            return errors.New("after date must be in YYYY-MM-DD format")
+        }
+    }
+    if before := query.Get("before"); before != "" {
+        if _, err := time.Parse("2006-01-02", before); err != nil {
+            return errors.New("before date must be in YYYY-MM-DD format")
+        }
+    }
     return nil
 }
 

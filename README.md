@@ -62,6 +62,33 @@ curl -X GET "http://localhost:8080/api/files?path=photos/vacation2023" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
+### Search Files
+
+```bash
+curl -X GET "http://localhost:8080/api/search?term=project" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+  # Search in specific directory
+curl -X GET "http://localhost:8080/api/search?term=report&path=documents" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Search by file type (extension)
+curl -X GET "http://localhost:8080/api/search?term=data&type=csv" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Search by file size (in bytes)
+curl -X GET "http://localhost:8080/api/search?term=video&minSize=1000000&maxSize=5000000" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Search by date modified
+curl -X GET "http://localhost:8080/api/search?term=report&after=2005-08-08&before=2005-08-08" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Combining multiple filters
+curl -X GET "http://localhost:8080/api/search?term=presentation&path=work&type=pptx&minSize=500000" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ### Create Directory
 
 ```bash
