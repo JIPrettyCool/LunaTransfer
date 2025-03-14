@@ -72,15 +72,6 @@ func main() {
     api.Handle("/files", middleware.ParamValidationMiddleware(middleware.ValidateListFilesRequest)(http.HandlerFunc(handlers.ListFiles))).Methods("GET")
     api.Handle("/refresh", http.HandlerFunc(handlers.RefreshTokenHandler)).Methods("POST")
     api.Handle("/dashboard", http.HandlerFunc(handlers.DashboardHandler)).Methods("GET")
-
-    r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
-
-    admin := api.PathPrefix("/admin").Subrouter()
-    admin.Use(middleware.RoleMiddleware(auth.RoleAdmin))
-    admin.HandleFunc("/users", handlers.ListUsersHandler).Methods("GET")
-    admin.HandleFunc("/users/{username}", handlers.DeleteUserHandler).Methods("DELETE")
-    admin.HandleFunc("/system/stats", handlers.SystemStatsHandler).Methods("GET")
-
     api.Handle("/files", 
         middleware.PermissionMiddleware("read", "files")(
             middleware.ParamValidationMiddleware(middleware.ValidateListFilesRequest)(
@@ -114,6 +105,14 @@ func main() {
             ),
         ),
     ).Methods("POST")
+
+    r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
+
+    admin := api.PathPrefix("/admin").Subrouter()
+    admin.Use(middleware.RoleMiddleware(auth.RoleAdmin))
+    admin.HandleFunc("/users", handlers.ListUsersHandler).Methods("GET")
+    admin.HandleFunc("/users/{username}", handlers.DeleteUserHandler).Methods("DELETE")
+    admin.HandleFunc("/system/stats", handlers.SystemStatsHandler).Methods("GET")
 
     srv := &http.Server{
         Addr:         fmt.Sprintf(":%d", appConfig.Port),
