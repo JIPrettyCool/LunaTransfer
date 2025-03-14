@@ -271,3 +271,23 @@ func DeleteUser(username string) error {
 
     return nil
 }
+
+// IsSetupCompleted checks if system setup has been completed (admin exists)
+func IsSetupCompleted() (bool, error) {
+    users, err := LoadUsers()
+    if (err != nil) {
+        if errors.Is(err, ErrUsersFileNotFound) {
+            return false, nil
+        }
+        return false, err
+    }
+    
+    // Check if any admin exists
+    for _, user := range users {
+        if user.Role == RoleAdmin {
+            return true, nil
+        }
+    }
+    
+    return false, nil
+}

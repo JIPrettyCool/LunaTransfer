@@ -46,6 +46,21 @@ func validateEmail(email string) bool {
 }
 
 func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+    setupCompleted, err := auth.IsSetupCompleted()
+    if err != nil {
+        utils.LogError("USER_CREATE_ERROR", err, "unknown", "Failed to check setup status")
+        http.Error(w, "Server error", http.StatusInternalServerError)
+        return
+    }
+    
+    if (!setupCompleted) {
+        utils.LogSystem("ACCESS_DENIED", "unknown", r.RemoteAddr, 
+            "Attempted signup before system setup")
+        http.Error(w, "System setup is required before creating users. Please use /setup endpoint first.", 
+            http.StatusForbidden)
+        return
+    }
+    
     var req CreateUserRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         utils.LogError("USER_CREATE_ERROR", err, "unknown", "Invalid request body")
