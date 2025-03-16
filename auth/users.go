@@ -233,7 +233,6 @@ func UserExists(username string) bool {
     return exists
 }
 
-// DeleteUser removes a user from the system
 func DeleteUser(username string) error {
     usersMutex.Lock()
     defer usersMutex.Unlock()
@@ -253,18 +252,15 @@ func DeleteUser(username string) error {
         return fmt.Errorf("failed to save users after deletion: %w", err)
     }
 
-    // Load config for storage directory
     appConfig, err := config.LoadConfig()
     if err != nil {
         log.Printf("Warning: Failed to load config to delete user storage: %v", err)
-        return nil // User is deleted from memory and disk, so return success
+        return nil
     }
 
-    // Delete user storage directory if it exists
     userStorageDir := filepath.Join(appConfig.StorageDirectory, username)
     if _, err := os.Stat(userStorageDir); err == nil {
         if err := os.RemoveAll(userStorageDir); err != nil {
-            // Log this error but don't fail the operation
             log.Printf("Warning: Failed to delete user's storage directory: %v", err)
         }
     }
@@ -272,7 +268,6 @@ func DeleteUser(username string) error {
     return nil
 }
 
-// IsSetupCompleted checks if system setup has been completed (admin exists)
 func IsSetupCompleted() (bool, error) {
     users, err := LoadUsers()
     if (err != nil) {
@@ -290,4 +285,19 @@ func IsSetupCompleted() (bool, error) {
     }
     
     return false, nil
+}
+
+func GetUserByUsername(username string) (*User, error) {
+    users, err := LoadUsers()
+    if (err != nil) {
+        return nil, err
+    }
+    
+    for _, user := range users {
+        if user.Username == username {
+            return &user, nil
+        }
+    }
+    
+    return nil, fmt.Errorf("user not found: %s", username)
 }

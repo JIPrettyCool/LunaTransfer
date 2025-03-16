@@ -316,3 +316,44 @@ func ValidateSearchRequest(r *http.Request) error {
     return nil
 }
 
+func ValidateCreateGroupRequest(body []byte) error {
+    var req struct {
+        Name        string `json:"name"`
+        Description string `json:"description"`
+    }
+
+    if err := json.Unmarshal(body, &req); err != nil {
+        return errors.New("invalid JSON format")
+    }
+
+    if req.Name == "" {
+        return errors.New("group name is required")
+    }
+
+    if len(req.Name) < 3 || len(req.Name) > 50 {
+        return errors.New("group name must be between 3 and 50 characters")
+    }
+
+    return nil
+}
+
+func ValidateGroupUploadRequest(r *http.Request) error {
+    if err := r.ParseMultipartForm(32 << 20); err != nil {
+        return errors.New("invalid multipart form")
+    }
+    file, _, err := r.FormFile("file")
+    if err != nil {
+        return errors.New("file field is required")
+    }
+    defer file.Close()
+    groupID := r.FormValue("groupId")
+    if groupID == "" {
+        return errors.New("groupId is required")
+    }
+    path := r.FormValue("path")
+    if path != "" && (strings.Contains(path, "..") || strings.HasPrefix(path, "/")) {
+        return errors.New("invalid path - contains path traversal attempt")
+    }
+    return nil
+}
+

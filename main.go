@@ -90,6 +90,16 @@ func main() {
         ),
     ).Methods("POST")
 
+    api.Handle("/upload/group", 
+        middleware.PermissionMiddleware("write", "files")(
+            middleware.MaxBodySizeMiddleware(maxUploadSize)(
+                middleware.ParamValidationMiddleware(middleware.ValidateGroupUploadRequest)(
+                    http.HandlerFunc(handlers.UploadFileWithGroupAccess),
+                ),
+            ),
+        ),
+    ).Methods("POST")
+
     api.Handle("/delete/{filename:.*}", 
         middleware.PermissionMiddleware("delete", "files")(
             middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(
@@ -121,6 +131,11 @@ func main() {
     admin.HandleFunc("/users", handlers.ListUsersHandler).Methods("GET")
     admin.HandleFunc("/users/{username}", handlers.DeleteUserHandler).Methods("DELETE")
     admin.HandleFunc("/system/stats", handlers.SystemStatsHandler).Methods("GET")
+    admin.HandleFunc("/groups", handlers.CreateGroupHandler).Methods("POST")
+    admin.HandleFunc("/groups", handlers.ListGroupsHandler).Methods("GET")
+    admin.HandleFunc("/groups/{groupId}/members", handlers.AddUserToGroupHandler).Methods("POST")
+    admin.HandleFunc("/groups/{groupId}/members", handlers.GetGroupMembersHandler).Methods("GET")
+    admin.HandleFunc("/groups/{groupId}/members/{username}", handlers.RemoveUserFromGroupHandler).Methods("DELETE")
 
     srv := &http.Server{
         Addr:         fmt.Sprintf(":%d", appConfig.Port),

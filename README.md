@@ -141,6 +141,68 @@ curl -X GET http://localhost:8080/api/admin/system/stats \
   -H "Authorization: Bearer ADMIN_JWT_TOKEN"
 ```
 
+### Create Group (Admin Only)
+
+```bash
+curl -X POST http://localhost:8080/api/admin/groups \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Marketing Team",
+    "description": "Group for marketing department files"
+  }'
+```
+
+### List Groups (Admin Only)
+
+```bash
+curl -X GET http://localhost:8080/api/admin/groups \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN"
+```
+
+### Add User to Group (Admin Only)
+
+```bash
+curl -X POST "http://localhost:8080/api/admin/groups/YOUR_GROUP_ID/members" \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user1",
+    "role": "member"
+  }'
+```
+
+### Remove User from Group (Admin Only)
+
+```bash
+curl -X DELETE "http://localhost:8080/api/admin/groups/YOUR_GROUP_ID/members/username" \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN"
+```
+
+### List Group Members (Admin Only)
+
+```bash
+curl -X GET "http://localhost:8080/api/admin/groups/YOUR_GROUP_ID/members" \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN"
+```
+
+### Upload File to Group Directory (Group Members Only)
+
+```bash
+curl -X POST http://localhost:8080/api/upload/group \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@/path/to/your/file.txt" \
+  -F "groupId=YOUR_GROUP_ID" \
+  -F "path=reports/monthly"
+```
+
+### List Files in Group Directory (Group Members Only)
+
+```bash
+curl -X GET "http://localhost:8080/api/files?path=groups/YOUR_GROUP_ID/reports" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ### WebSocket Connection (for real-time notifications)
 
 ```bash

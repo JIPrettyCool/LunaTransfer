@@ -11,6 +11,7 @@ import (
     "strings"
     "fmt"
     "LunaTransfer/utils"
+    "LunaTransfer/auth"
 )
 
 type FileInfo struct {
@@ -27,72 +28,200 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
         return
     }
-    
-    query := r.URL.Query()
-    path := query.Get("path")
-    
-    path = filepath.Clean(path)
-    if strings.Contains(path, "..") {
-        utils.LogError("LIST_FILES_ERROR", fmt.Errorf("path traversal attempt"), username)
+
+    queryPath := r.URL.Query().Get("path")
+    if queryPath != "" && strings.Contains(queryPath, "..") {
+        utils.LogError("LIST_ERROR", fmt.Errorf("path traversal attempt"), username, queryPath)
         http.Error(w, "Invalid path", http.StatusBadRequest)
         return
     }
     
     appConfig, err := config.LoadConfig()
     if err != nil {
-        utils.LogError("LIST_FILES_ERROR", err, username)
-        http.Error(w, "Server configuration error", http.StatusInternalServerError)
+        utils.LogError("LIST_ERROR", err, username, "Failed to load config")
+        http.Error(w, "Server error", http.StatusInternalServerError)
         return
     }
-    
-    userStorageDir := filepath.Join(appConfig.StorageDirectory, username)
-    fullPath := filepath.Join(userStorageDir, path)
-    if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-        if path == "" || path == "." {
-            if err := os.MkdirAll(userStorageDir, 0755); err != nil {
-                utils.LogError("LIST_FILES_ERROR", err, username)
-                http.Error(w, "Failed to create storage directory", http.StatusInternalServerError)
-                return
-            }
+
+    user, err := auth.GetUserByUsername(username)
+    if err != nil {
+        utils.LogError("LIST_ERROR", err, username, "Failed to get user details")
+        http.Error(w, "Server error", http.StatusInternalServerError)
+        return
+    }
+
+    var fileLists [][]map[string]interface{}
+    if strings.HasPrefix(queryPath, "groups/") {
+        parts := strings.SplitN(queryPath[7:], "/", 2)
+        groupID := parts[0]
+        subPath := ""
+        if len(parts) > 1 {
+            subPath = parts[1]
+        }
+        hasAccess := false
+            if user.Role == auth.RoleAdmin {
+            hasAccess = true
         } else {
-            utils.LogError("LIST_FILES_ERROR", err, username)
-            http.Error(w, "Directory not found", http.StatusNotFound)
+            members, err := auth.GetGroupMembers(groupID)
+            if err == nil {
+                for _, member := range members {
+                    if member.Username == username {
+                        hasAccess = true
+                        break
+                    }
+                }
+            }
+        }
+
+        if !hasAccess {
+            utils.LogSystem("ACCESS_DENIED", username, r.RemoteAddr, 
+                fmt.Sprintf("Attempted to access group directory: %s", queryPath))
+            http.Error(w, "Access denied", http.StatusForbidden)
             return
         }
+        groupDirPath := filepath.Join(appConfig.StorageDirectory, "groups", groupID)
+        if subPath != "" {
+            groupDirPath = filepath.Join(groupDirPath, subPath)
+        }
+
+        groupFiles, err := listFilesInDirectory(groupDirPath, filepath.Join("groups", groupID, subPath))
+        if err != nil {
+            if os.IsNotExist(err) {
+                w.Header().Set("Content-Type", "application/json")
+                json.NewEncoder(w).Encode(map[string]interface{}{
+                    "files": []interface{}{},
+                    "path": queryPath,
+                })
+                return
+            }
+            utils.LogError("LIST_ERROR", err, username, fmt.Sprintf("Failed to read group directory: %s", queryPath))
+            http.Error(w, "Failed to read directory", http.StatusInternalServerError)
+            return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "files": groupFiles,
+            "path": queryPath,
+        })
+        return
     }
-    
-    entries, err := os.ReadDir(fullPath)
+
+    if queryPath == "" {
+        userDir := filepath.Join(appConfig.StorageDirectory, username)
+        userFiles, err := listFilesInDirectory(userDir, "")
+        if err == nil {
+            fileLists = append(fileLists, userFiles)
+        } else if !os.IsNotExist(err) {
+            utils.LogError("LIST_ERROR", err, username, "Failed to read user directory")
+        }
+
+        if user.Role == auth.RoleAdmin {
+            groups, err := auth.LoadGroups()
+            if err == nil {
+                for _, group := range groups {
+                    groupEntry := map[string]interface{}{
+                        "name":     group.Name,
+                        "path":     filepath.Join("groups", group.ID),
+                        "size":     int64(0),
+                        "isDir":    true,
+                        "modified": group.CreatedAt,
+                        "isGroup":  true,
+                    }
+                    fileLists = append(fileLists, []map[string]interface{}{groupEntry})
+                }
+            }
+        } else {
+            groups, err := auth.LoadGroups()
+            if err == nil {
+                for _, group := range groups {
+                    members, err := auth.GetGroupMembers(group.ID)
+                    if err != nil {
+                        continue
+                    }
+                    isMember := false
+                    for _, member := range members {
+                        if member.Username == username {
+                            isMember = true
+                            break
+                        }
+                    }
+                    if isMember {
+                        groupEntry := map[string]interface{}{
+                            "name":     group.Name,
+                            "path":     filepath.Join("groups", group.ID),
+                            "size":     int64(0),
+                            "isDir":    true,
+                            "modified": group.CreatedAt,
+                            "isGroup":  true,
+                        }
+                        fileLists = append(fileLists, []map[string]interface{}{groupEntry})
+                    }
+                }
+            }
+        }
+        allFiles := []map[string]interface{}{}
+        for _, list := range fileLists {
+            allFiles = append(allFiles, list...)
+        }
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "files": allFiles,
+            "path": queryPath,
+        })
+        return
+    }
+    userDir := filepath.Join(appConfig.StorageDirectory, username)
+    dirPath := filepath.Join(userDir, queryPath)
+
+    if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "files": []interface{}{},
+            "path": queryPath,
+        })
+        return
+    }
+
+    userFiles, err := listFilesInDirectory(dirPath, queryPath)
     if err != nil {
-        utils.LogError("LIST_FILES_ERROR", err, username)
+        utils.LogError("LIST_ERROR", err, username, fmt.Sprintf("Failed to read directory: %s", queryPath))
         http.Error(w, "Failed to read directory", http.StatusInternalServerError)
         return
     }
-    
-    files := make([]FileInfo, 0, len(entries))
-    for _, entry := range entries {
-        info, err := entry.Info()
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "files": userFiles,
+        "path": queryPath,
+    })
+}
+
+func listFilesInDirectory(dirPath, relativePath string) ([]map[string]interface{}, error) {
+    files, err := os.ReadDir(dirPath)
+    if err != nil {
+        return nil, err
+    }
+
+    var fileList []map[string]interface{}
+    for _, file := range files {
+        fileInfo, err := file.Info()
         if err != nil {
             continue
         }
-        
-        entryPath := filepath.Join(path, entry.Name())
-        if path == "." || path == "" {
-            entryPath = entry.Name()
+        if strings.HasPrefix(file.Name(), ".") {
+            continue
         }
         
-        files = append(files, FileInfo{
-            Name:     entry.Name(),
-            Size:     info.Size(),
-            IsDir:    entry.IsDir(),
-            Path:     entryPath,
-            Modified: info.ModTime(),
-        })
+        filePath := filepath.Join(relativePath, file.Name())
+        fileEntry := map[string]interface{}{
+            "name":     file.Name(),
+            "path":     filePath,
+            "size":     fileInfo.Size(),
+            "isDir":    file.IsDir(),
+            "modified": fileInfo.ModTime(),
+        }
+        fileList = append(fileList, fileEntry)
     }
-    utils.LogSystem("LIST_FILES", username, r.RemoteAddr, fmt.Sprintf("Listed files in directory: %s", path))
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]interface{}{
-        "success": true,
-        "path":    path,
-        "files":   files,
-    })
+    return fileList, nil
 }
