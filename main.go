@@ -67,7 +67,7 @@ func main() {
             ),
         ),
     ).Methods("POST")
-    api.Handle("/download/{filename}", middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(http.HandlerFunc(handlers.DownloadFile))).Methods("GET")
+    api.Handle("/download/{filename:.*}", middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(http.HandlerFunc(handlers.DownloadFile))).Methods("GET")
     api.Handle("/delete/{filename}", middleware.ParamValidationMiddleware(middleware.ValidateFilenameParam)(http.HandlerFunc(handlers.DeleteFile))).Methods("DELETE")
     api.Handle("/files", middleware.ParamValidationMiddleware(middleware.ValidateListFilesRequest)(http.HandlerFunc(handlers.ListFiles))).Methods("GET")
     api.Handle("/refresh", http.HandlerFunc(handlers.RefreshTokenHandler)).Methods("POST")
