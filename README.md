@@ -196,11 +196,39 @@ curl -X POST http://localhost:8080/api/upload/group \
   -F "path=reports/monthly"
 ```
 
+### Download File from Group Directory (Group Members Only)
+
+```bash
+curl -X GET http://localhost:8080/api/download/groups/YOUR_GROUP_ID/path/to/file.txt \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  --output downloaded_file.txt
+```
+
 ### List Files in Group Directory (Group Members Only)
 
 ```bash
 curl -X GET "http://localhost:8080/api/files?path=groups/YOUR_GROUP_ID/reports" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Group Role Permissions
+
+LunaTransfer supports three levels of group roles:
+
+- **admin**: Can manage group members and has full access to all group files
+- **contributor**: Can upload, modify, and download files but cannot manage members
+- **reader**: Can only view and download files
+
+### Add User to Group with Specific Role (Admin Only)
+
+```bash
+curl -X POST "http://localhost:8080/api/admin/groups/YOUR_GROUP_ID/members" \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user1",
+    "role": "contributor"
+  }'
 ```
 
 ### WebSocket Connection (for real-time notifications)

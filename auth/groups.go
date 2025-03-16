@@ -1,16 +1,18 @@
 package auth
 
 import (
+	"LunaTransfer/common"
 	"LunaTransfer/config"
     "LunaTransfer/utils"
     "encoding/json"
     "errors"
     "fmt"
+    "net/http"
     "os"
     "path/filepath"
     "sync"
     "time"
-
+    "github.com/gorilla/mux"
 )
 
 var (
@@ -19,6 +21,13 @@ var (
     ErrGroupNotFound = errors.New("group not found")
     ErrUserAlreadyInGroup = errors.New("user already in group")
     ErrUserNotInGroup = errors.New("user not in group")
+)
+
+// Group role constants
+const (
+    GroupRoleAdmin       = "admin"       // Can manage group and all files
+    GroupRoleContributor = "contributor" // Can upload and modify files
+    GroupRoleReader      = "reader"      // Can only view and download files
 )
 
 type Group struct {
@@ -148,8 +157,8 @@ func saveGroups(groups []Group) error {
 }
 
 func AddUserToGroup(groupID, username, role, addedBy string) error {
-    if role != "member" && role != "admin" {
-        role = "member"
+    if role != GroupRoleAdmin && role != GroupRoleContributor && role != GroupRoleReader {
+        role = GroupRoleReader
     }
 
     _, err := GetUserByUsername(username)
@@ -157,10 +166,10 @@ func AddUserToGroup(groupID, username, role, addedBy string) error {
         return err
     }
 
-	_, err = GetGroupByID(groupID)
-	if err != nil {
-		return err
-	}
+    _, err = GetGroupByID(groupID)
+    if err != nil {
+        return err
+    }
 
     members, err := GetGroupMembers(groupID)
     if err != nil {
@@ -442,4 +451,91 @@ func RemoveUserFromGroup(groupID, username, removedBy string) error {
         fmt.Sprintf("User %s was removed from group %s by %s", username, group.Name, removedBy))
 
     return nil
+}
+
+func HasGroupPermission(username, groupID, action string) (bool, error) {
+    user, err := GetUserByUsername(username)
+    if err == nil && user.Role == RoleAdmin {
+        return true, nil
+    }
+    
+    members, err := GetGroupMembers(groupID)
+    if err != nil {
+        return false, err
+    }
+    
+    var userRole string
+    isMember := false
+    for _, member := range members {
+        if member.Username == username {
+            userRole = member.Role
+            isMember = true
+            break
+        }
+    }
+    
+    if !isMember {
+        return false, nil
+    }
+    
+    switch action {
+    case "read":
+        return true, nil
+    case "write", "upload":
+        return userRole == GroupRoleAdmin || userRole == GroupRoleContributor, nil
+    case "manage", "delete":
+        return userRole == GroupRoleAdmin, nil
+    }
+    return false, nil
+}
+
+func AddUserToGroupHandler(w http.ResponseWriter, r *http.Request) {
+    adminUsername, ok := common.GetUsernameFromContext(r.Context())
+    if (!ok) {
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+    
+    vars := mux.Vars(r)
+    groupID := vars["groupId"]
+    
+    var req struct {
+        Username string `json:"username"`
+        Role     string `json:"role"`
+    }
+    
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+    
+    if req.Role != GroupRoleAdmin && req.Role != GroupRoleContributor && req.Role != GroupRoleReader {
+        http.Error(w, "Invalid role. Must be 'admin', 'contributor', or 'reader'", http.StatusBadRequest)
+        return
+    }
+    
+    _, err := GetUserByUsername(req.Username)
+    if err != nil {
+        http.Error(w, "User not found", http.StatusNotFound)
+        return
+    }
+    
+    err = AddUserToGroup(groupID, req.Username, req.Role, adminUsername)
+    if err != nil {
+        if err == ErrGroupNotFound {
+            http.Error(w, "Group not found", http.StatusNotFound)
+        } else if err == ErrUserAlreadyInGroup {
+            http.Error(w, "User already in group", http.StatusConflict)
+        } else {
+            http.Error(w, "Failed to add user to group", http.StatusInternalServerError)
+        }
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "success": true,
+        "message": fmt.Sprintf("User %s added to group with role %s", req.Username, req.Role),
+    })
 }

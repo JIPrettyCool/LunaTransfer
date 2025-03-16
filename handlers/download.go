@@ -66,15 +66,14 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
         
         hasAccess := user.Role == auth.RoleAdmin
         if !hasAccess {
-            members, err := auth.GetGroupMembers(groupID)
-            if err == nil {
-                for _, member := range members {
-                    if member.Username == username {
-                        hasAccess = true
-                        break
-                    }
-                }
+            hasPermission, err := auth.HasGroupPermission(username, groupID, "read")
+            if err != nil {
+                utils.LogError("DOWNLOAD_ERROR", err, username, "Failed to check group permissions")
+                http.Error(w, "Server error", http.StatusInternalServerError)
+                return
             }
+            
+            hasAccess = hasPermission
         }
         
         if !hasAccess {
@@ -83,6 +82,7 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
             http.Error(w, "Access denied", http.StatusForbidden)
             return
         }
+        
         filePath = filepath.Join(appConfig.StorageDirectory, "groups", groupID, groupFilePath)
     } else {
         filePath = filepath.Join(appConfig.StorageDirectory, username, filename)

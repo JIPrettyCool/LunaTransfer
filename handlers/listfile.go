@@ -54,31 +54,26 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
     if strings.HasPrefix(queryPath, "groups/") {
         parts := strings.SplitN(queryPath[7:], "/", 2)
         groupID := parts[0]
+        
         subPath := ""
         if len(parts) > 1 {
             subPath = parts[1]
         }
-        hasAccess := false
-            if user.Role == auth.RoleAdmin {
-            hasAccess = true
-        } else {
-            members, err := auth.GetGroupMembers(groupID)
-            if err == nil {
-                for _, member := range members {
-                    if member.Username == username {
-                        hasAccess = true
-                        break
-                    }
-                }
-            }
+        
+        hasPermission, err := auth.HasGroupPermission(username, groupID, "read")
+        if err != nil {
+            utils.LogError("LIST_ERROR", err, username, "Failed to check group permissions")
+            http.Error(w, "Server error", http.StatusInternalServerError)
+            return
         }
-
-        if !hasAccess {
+        
+        if !hasPermission {
             utils.LogSystem("ACCESS_DENIED", username, r.RemoteAddr, 
-                fmt.Sprintf("Attempted to access group directory: %s", queryPath))
+                fmt.Sprintf("Attempted to list group files without permission: %s", groupID))
             http.Error(w, "Access denied", http.StatusForbidden)
             return
         }
+        
         groupDirPath := filepath.Join(appConfig.StorageDirectory, "groups", groupID)
         if subPath != "" {
             groupDirPath = filepath.Join(groupDirPath, subPath)

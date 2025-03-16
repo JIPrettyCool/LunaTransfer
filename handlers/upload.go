@@ -196,6 +196,21 @@ func UploadFileWithGroupAccess(w http.ResponseWriter, r *http.Request) {
             return
         }
     }
+    
+    hasPermission, err := auth.HasGroupPermission(username, groupID, "write")
+    if err != nil {
+        utils.LogError("UPLOAD_ERROR", err, username, "Failed to check group permissions")
+        http.Error(w, "Server error", http.StatusInternalServerError)
+        return
+    }
+    
+    if !hasPermission {
+        utils.LogSystem("ACCESS_DENIED", username, r.RemoteAddr, 
+            fmt.Sprintf("Attempted to upload to group without write permission: %s", group.Name))
+        http.Error(w, "Access denied - you don't have write permission in this group", http.StatusForbidden)
+        return
+    }
+    
     appConfig, err := config.LoadConfig()
     if err != nil {
         utils.LogError("UPLOAD_ERROR", err, username, "Failed to load config")
