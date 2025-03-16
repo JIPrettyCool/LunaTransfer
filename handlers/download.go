@@ -85,6 +85,15 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
         
         filePath = filepath.Join(appConfig.StorageDirectory, "groups", groupID, groupFilePath)
     } else {
+        if !isGroupFile && !strings.HasPrefix(filename, username) {
+            hasSharedAccess, err := auth.HasAccessToSharedFile(username, filename, false)
+            if err != nil || !hasSharedAccess {
+                utils.LogSystem("ACCESS_DENIED", username, r.RemoteAddr, 
+                    fmt.Sprintf("Attempted to download file without permission: %s", filename))
+                http.Error(w, "Access denied", http.StatusForbidden)
+                return
+            }
+        }
         filePath = filepath.Join(appConfig.StorageDirectory, username, filename)
     }
 

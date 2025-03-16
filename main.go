@@ -124,6 +124,24 @@ func main() {
         ),
     ).Methods("GET")
 
+    api.Handle("/share", 
+        middleware.AuthMiddleware(
+            http.HandlerFunc(handlers.ShareFileHandler),
+        ),
+    ).Methods("POST")
+
+    api.Handle("/share/{shareId}", 
+        middleware.AuthMiddleware(
+            http.HandlerFunc(handlers.RemoveShareHandler),
+        ),
+    ).Methods("DELETE")
+
+    api.Handle("/shared", 
+        middleware.AuthMiddleware(
+            http.HandlerFunc(handlers.ListSharedFilesHandler),
+        ),
+    ).Methods("GET")
+
     r.Handle("/ws", middleware.AuthMiddleware(http.HandlerFunc(utils.HandleWebSocket))).Methods("GET")
 
     admin := api.PathPrefix("/admin").Subrouter()

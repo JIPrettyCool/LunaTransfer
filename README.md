@@ -231,6 +231,34 @@ curl -X POST "http://localhost:8080/api/admin/groups/YOUR_GROUP_ID/members" \
   }'
 ```
 
+### Share a File with Another Group
+
+```bash
+curl -X POST http://localhost:8080/api/share \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "path/to/file.txt",
+    "source_group": "SOURCE_GROUP_ID",
+    "target_group": "TARGET_GROUP_ID",
+    "permission": "read"
+  }'
+```
+
+### List Files Shared with a Group
+
+```bash
+curl -X GET "http://localhost:8080/api/shared?groupId=YOUR_GROUP_ID" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Remove File Sharing
+
+```bash
+curl -X DELETE http://localhost:8080/api/share/SHARE_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ### WebSocket Connection (for real-time notifications)
 
 ```bash

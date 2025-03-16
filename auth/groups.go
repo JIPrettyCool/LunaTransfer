@@ -21,6 +21,9 @@ var (
     ErrGroupNotFound = errors.New("group not found")
     ErrUserAlreadyInGroup = errors.New("user already in group")
     ErrUserNotInGroup = errors.New("user not in group")
+    sharingLock sync.RWMutex
+    ErrAlreadyShared = errors.New("file is already shared with this group")
+    ErrShareNotFound = errors.New("share not found")
 )
 
 // Group role constants
@@ -61,6 +64,23 @@ type FileAccess struct {
     IsPublic    bool     `json:"is_public"`
     GroupIDs    []string `json:"group_ids"`
     CreatedAt   time.Time `json:"created_at"`
+}
+
+type SharePermission string
+
+const (
+    SharePermissionRead     SharePermission = "read"
+    SharePermissionReadWrite SharePermission = "read_write"
+)
+
+type SharedFile struct {
+    ID          string         `json:"id"`
+    SourcePath  string         `json:"source_path"`
+    GroupID     string         `json:"group_id"`     // Group the file is shared with
+    SourceGroup string         `json:"source_group"` // Original group
+    SharedBy    string         `json:"shared_by"`
+    SharedAt    time.Time      `json:"shared_at"`
+    Permission  SharePermission `json:"permission"`  // Read or read/write
 }
 
 func CreateGroup(name, description, createdBy string) (*Group, error) {
@@ -538,4 +558,215 @@ func AddUserToGroupHandler(w http.ResponseWriter, r *http.Request) {
         "success": true,
         "message": fmt.Sprintf("User %s added to group with role %s", req.Username, req.Role),
     })
+}
+
+func LoadSharedFiles() ([]SharedFile, error) {
+    sharingLock.RLock()
+    defer sharingLock.RUnlock()
+    
+    appConfig, err := config.LoadConfig()
+    if err != nil {
+        return nil, err
+    }
+    
+    sharesFile := filepath.Join(appConfig.StorageDirectory, "shared_files.json")
+    
+    if _, err := os.Stat(sharesFile); os.IsNotExist(err) {
+        return []SharedFile{}, nil
+    }
+    
+    data, err := os.ReadFile(sharesFile)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read shared files: %w", err)
+    }
+    
+    var shares []SharedFile
+    if err := json.Unmarshal(data, &shares); err != nil {
+        return nil, fmt.Errorf("failed to parse shared files data: %w", err)
+    }
+    
+    return shares, nil
+}
+
+func saveSharedFiles(shares []SharedFile) error {
+    appConfig, err := config.LoadConfig()
+    if err != nil {
+        return err
+    }
+    
+    sharesFile := filepath.Join(appConfig.StorageDirectory, "shared_files.json")
+    
+    data, err := json.MarshalIndent(shares, "", "  ")
+    if err != nil {
+        return fmt.Errorf("failed to marshal shared files data: %w", err)
+    }
+    
+    return os.WriteFile(sharesFile, data, 0644)
+}
+
+func ShareFileWithGroup(sourcePath, sourceGroup, targetGroupID, sharedBy string, permission SharePermission) (*SharedFile, error) {
+    sharingLock.Lock()
+    defer sharingLock.Unlock()
+    
+    if permission != SharePermissionRead && permission != SharePermissionReadWrite {
+        permission = SharePermissionRead
+    }
+    
+    if sourceGroup != "" {
+        if _, err := GetGroupByID(sourceGroup); err != nil {
+            return nil, fmt.Errorf("source group not found: %w", err)
+        }
+    }
+    
+    if _, err := GetGroupByID(targetGroupID); err != nil {
+        return nil, fmt.Errorf("target group not found: %w", err)
+    }
+    
+    if sourceGroup == targetGroupID {
+        return nil, errors.New("cannot share within the same group")
+    }
+    
+    shares, err := LoadSharedFiles()
+    if err != nil {
+        return nil, err
+    }
+    
+    for _, s := range shares {
+        if s.SourcePath == sourcePath && s.GroupID == targetGroupID {
+            return nil, ErrAlreadyShared
+        }
+    }
+    
+    newShare := &SharedFile{
+        ID:          utils.GenerateUUID(),
+        SourcePath:  sourcePath,
+        GroupID:     targetGroupID,
+        SourceGroup: sourceGroup,
+        SharedBy:    sharedBy,
+        SharedAt:    time.Now(),
+        Permission:  permission,
+    }
+    
+    shares = append(shares, *newShare)
+    if err := saveSharedFiles(shares); err != nil {
+        return nil, err
+    }
+    
+    return newShare, nil
+}
+
+func RemoveFileSharing(shareID, username string) error {
+    sharingLock.Lock()
+    defer sharingLock.Unlock()
+    
+    shares, err := LoadSharedFiles()
+    if err != nil {
+        return err
+    }
+    
+    found := false
+    var updatedShares []SharedFile
+    
+    for _, share := range shares {
+        if share.ID == shareID {
+            found = true
+            
+            if !IsUserAdmin(username) && share.SharedBy != username {
+                return errors.New("you can only remove your own shared files")
+            }
+        } else {
+            updatedShares = append(updatedShares, share)
+        }
+    }
+    
+    if !found {
+        return ErrShareNotFound
+    }
+    
+    return saveSharedFiles(updatedShares)
+}
+
+func GetFilesSharedWithGroup(groupID string) ([]SharedFile, error) {
+    allShares, err := LoadSharedFiles()
+    if err != nil {
+        return nil, err
+    }
+    
+    var groupShares []SharedFile
+    for _, share := range allShares {
+        if share.GroupID == groupID {
+            groupShares = append(groupShares, share)
+        }
+    }
+    
+    return groupShares, nil
+}
+
+func HasAccessToSharedFile(username, filePath string, writeAccess bool) (bool, error) {
+    user, err := GetUserByUsername(username)
+    if err != nil {
+        return false, err
+    }
+    
+    if user.Role == RoleAdmin {
+        return true, nil
+    }
+    
+    userGroups, err := GetUserGroups(username)
+    if err != nil {
+        return false, err
+    }
+    
+    shares, err := LoadSharedFiles()
+    if err != nil {
+        return false, err
+    }
+    
+    for _, share := range shares {
+        if share.SourcePath == filePath {
+            for _, group := range userGroups {
+                if group.ID == share.GroupID {
+                    if writeAccess {
+                        return share.Permission == SharePermissionReadWrite, nil
+                    }
+                    return true, nil
+                }
+            }
+        }
+    }
+    
+    return false, nil
+}
+
+func GetUserGroups(username string) ([]Group, error) {
+    allGroups, err := LoadGroups()
+    if err != nil {
+        return nil, err
+    }
+    
+    var userGroups []Group
+    
+    for _, group := range allGroups {
+        members, err := GetGroupMembers(group.ID)
+        if err != nil {
+            continue
+        }
+        
+        for _, member := range members {
+            if member.Username == username {
+                userGroups = append(userGroups, group)
+                break
+            }
+        }
+    }
+    
+    return userGroups, nil
+}
+
+func IsUserAdmin(username string) bool {
+    user, err := GetUserByUsername(username)
+    if err != nil {
+        return false
+    }
+    return user.Role == RoleAdmin
 }

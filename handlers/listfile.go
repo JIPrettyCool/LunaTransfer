@@ -155,6 +155,36 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
                 }
             }
         }
+
+        userGroups, err := auth.GetUserGroups(username)
+        if err == nil && len(userGroups) > 0 {
+            sharedSection := []map[string]interface{}{}
+            
+            allShares, err := auth.LoadSharedFiles()
+            if err == nil {
+                for _, share := range allShares {
+                    for _, group := range userGroups {
+                        if share.GroupID == group.ID {
+                            sharedInfo := map[string]interface{}{
+                                "name":       filepath.Base(share.SourcePath),
+                                "path":       share.SourcePath,
+                                "sharedBy":   share.SharedBy,
+                                "sharedAt":   share.SharedAt,
+                                "groupName":  group.Name,
+                                "permission": share.Permission,
+                                "isShared":   true,
+                            }
+                            sharedSection = append(sharedSection, sharedInfo)
+                        }
+                    }
+                }
+            }
+            
+            if len(sharedSection) > 0 {
+                fileLists = append(fileLists, sharedSection)
+            }
+        }
+
         allFiles := []map[string]interface{}{}
         for _, list := range fileLists {
             allFiles = append(allFiles, list...)
