@@ -28,6 +28,10 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Filename required", http.StatusBadRequest)
         return
     }
+    filename = filepath.ToSlash(filename)
+    
+    utils.LogSystem("DOWNLOAD_REQUEST", username, r.RemoteAddr, 
+        fmt.Sprintf("Download requested for: %s", filename), time.Now().Unix())
 
     appConfig, err := config.LoadConfig()
     if err != nil {
@@ -85,7 +89,21 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
         
         filePath = filepath.Join(appConfig.StorageDirectory, "groups", groupID, groupFilePath)
     } else {
-        if !isGroupFile && !strings.HasPrefix(filename, username) {
+        possiblePaths := []string{
+            filepath.Join(appConfig.StorageDirectory, username, filename),
+            filepath.Join(appConfig.StorageDirectory, filename),
+        }
+        
+        var fileExists bool
+        for _, path := range possiblePaths {
+            if _, err := os.Stat(path); err == nil {
+                filePath = path
+                fileExists = true
+                break
+            }
+        }
+        
+        if !fileExists {
             hasSharedAccess, err := auth.HasAccessToSharedFile(username, filename, false)
             if err != nil || !hasSharedAccess {
                 utils.LogSystem("ACCESS_DENIED", username, r.RemoteAddr, 
@@ -93,13 +111,16 @@ func DownloadFile(w http.ResponseWriter, r *http.Request) {
                 http.Error(w, "Access denied", http.StatusForbidden)
                 return
             }
+            filePath = filepath.Join(appConfig.StorageDirectory, filename)
         }
-        filePath = filepath.Join(appConfig.StorageDirectory, username, filename)
     }
+
+    utils.LogSystem("FILE_PATH_DEBUG", username, r.RemoteAddr, 
+        fmt.Sprintf("Attempting to access file at: %s", filePath), time.Now().Unix())
 
     info, err := os.Stat(filePath)
     if os.IsNotExist(err) {
-        utils.LogError("DOWNLOAD_ERROR", err, username, fmt.Sprintf("File not found: %s", filename))
+        utils.LogError("DOWNLOAD_ERROR", err, username, fmt.Sprintf("File not found: %s (path: %s)", filename, filePath))
         http.Error(w, "File not found", http.StatusNotFound)
         return
     }
