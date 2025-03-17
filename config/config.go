@@ -29,6 +29,7 @@ var (
 type AppConfig struct {
     Port             int    `json:"port"`
     StorageDirectory string `json:"storage_directory"`
+    jsonDBDirectory  string `json:"json_db_directory"`
     MaxFileSize      int64  `json:"max_file_size"` 
     LogDirectory     string `json:"log_directory"`
     JWTSecret        string `json:"jwt_secret"`
@@ -55,6 +56,7 @@ func LoadConfig() (*AppConfig, error) {
     config = &AppConfig{
         Port:             8080,
         StorageDirectory: "storage",
+        jsonDBDirectory:  "db",
         MaxFileSize:      100 * 1024 * 1024, // 100MB
         LogDirectory:     "logs",
         JWTSecret:        "luna-transfer-secret-key",
@@ -153,6 +155,11 @@ func EnsureStorageExists() error {
     if err := os.MkdirAll(config.StorageDirectory, 0755); err != nil {
         return err
     }
+    
+    // Create db storage directory
+    if err := os.MkdirAll(config.jsonDBDirectory, 0755); err != nil {
+        return err
+    }
 
     logDir := filepath.Dir(config.LogFile)
     if logDir != "." && logDir != "" {
@@ -197,14 +204,6 @@ func getEnv(key, defaultValue string) string {
     return defaultValue
 }
 
-func GetConfig() *AppConfig {
-    if config == nil {
-        _, err := LoadConfig()
-        if err != nil {
-            return &AppConfig{
-                LogFile: "transfers.log",
-            }
-        }
-    }
-    return config
+func (c *AppConfig) GetDataDirectory() string {
+    return c.jsonDBDirectory
 }

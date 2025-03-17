@@ -3,7 +3,6 @@ package models
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
     "os"
     "path/filepath"
     "sync"
@@ -32,7 +31,7 @@ func GetFileSharePath() (string, error) {
     if err != nil {
         return "", err
     }
-    return filepath.Join(cfg.StorageDirectory, "file_shares.json"), nil
+    return filepath.Join(cfg.StorageDirectory, fileSharesFile), nil
 }
 
 func LoadFileShares() ([]FileShare, error) {
@@ -48,7 +47,7 @@ func LoadFileShares() ([]FileShare, error) {
         return []FileShare{}, nil
     }
 
-    data, err := ioutil.ReadFile(path)
+    data, err := os.ReadFile(path)
     if err != nil {
         return nil, err
     }
@@ -76,7 +75,7 @@ func SaveFileShares(shares []FileShare) error {
         return err
     }
 
-    return ioutil.WriteFile(path, data, 0644)
+    return os.WriteFile(path, data, 0644)
 }
 
 func SaveFileShare(share FileShare) error {

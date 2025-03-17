@@ -88,7 +88,7 @@ func CreateGroup(name, description, createdBy string) (*Group, error) {
     defer groupsLock.Unlock()
 
     groups, err := LoadGroups()
-    if err != nil {
+    if (err != nil) {
         return nil, err
     }
 
@@ -131,7 +131,7 @@ func LoadGroups() ([]Group, error) {
         return nil, fmt.Errorf("failed to load config: %w", err)
     }
 
-    groupsFile := filepath.Join(appConfig.StorageDirectory, "groups.json")
+    groupsFile := filepath.Join(appConfig.GetDataDirectory(), "groups.json")
     
     if _, err := os.Stat(groupsFile); os.IsNotExist(err) {
         return []Group{}, nil
@@ -163,7 +163,7 @@ func saveGroups(groups []Group) error {
         return fmt.Errorf("failed to marshal groups data: %w", err)
     }
 
-    groupsFile := filepath.Join(appConfig.StorageDirectory, "groups.json")
+    groupsFile := filepath.Join(appConfig.GetDataDirectory(), "groups.json")
     
     if err := os.MkdirAll(filepath.Dir(groupsFile), 0755); err != nil {
         return fmt.Errorf("failed to create data directory: %w", err)
@@ -234,7 +234,7 @@ func GetGroupMembers(groupID string) ([]GroupMember, error) {
         return nil, fmt.Errorf("failed to load config: %w", err)
     }
 
-    membersFile := filepath.Join(appConfig.StorageDirectory, "group_members.json")
+    membersFile := filepath.Join(appConfig.GetDataDirectory(), "group_members.json")
     
     if _, err := os.Stat(membersFile); os.IsNotExist(err) {
         return []GroupMember{}, nil
@@ -268,7 +268,7 @@ func saveGroupMember(member GroupMember) error {
         return fmt.Errorf("failed to load config: %w", err)
     }
 
-    membersFile := filepath.Join(appConfig.StorageDirectory, "group_members.json")
+    membersFile := filepath.Join(appConfig.GetDataDirectory(), "group_members.json")
     
     var members []GroupMember
     if _, err := os.Stat(membersFile); !os.IsNotExist(err) {
@@ -346,7 +346,7 @@ func GetFileAccess(filePath string) (*FileAccess, error) {
         return nil, fmt.Errorf("failed to load config: %w", err)
     }
 
-    accessFile := filepath.Join(appConfig.StorageDirectory, "fileaccess.json")
+    accessFile := filepath.Join(appConfig.GetDataDirectory(), "fileaccess.json")
     
     if _, err := os.Stat(accessFile); os.IsNotExist(err) {
         return nil, fmt.Errorf("no access control defined for path")
@@ -377,7 +377,7 @@ func SaveFileAccess(access FileAccess) error {
         return fmt.Errorf("failed to load config: %w", err)
     }
 
-    accessFile := filepath.Join(appConfig.StorageDirectory, "fileaccess.json")
+    accessFile := filepath.Join(appConfig.GetDataDirectory(), "fileaccess.json")
     
     var accessList []FileAccess
     
@@ -430,7 +430,7 @@ func RemoveUserFromGroup(groupID, username, removedBy string) error {
         return fmt.Errorf("failed to load config: %w", err)
     }
 
-    membersFile := filepath.Join(appConfig.StorageDirectory, "group_members.json")
+    membersFile := filepath.Join(appConfig.GetDataDirectory(), "group_members.json")
     
     if _, err := os.Stat(membersFile); os.IsNotExist(err) {
         return ErrUserNotInGroup
@@ -569,7 +569,7 @@ func LoadSharedFiles() ([]SharedFile, error) {
         return nil, err
     }
     
-    sharesFile := filepath.Join(appConfig.StorageDirectory, "shared_files.json")
+    sharesFile := filepath.Join(appConfig.GetDataDirectory(), "shared_files.json")
     
     if _, err := os.Stat(sharesFile); os.IsNotExist(err) {
         return []SharedFile{}, nil
@@ -594,7 +594,7 @@ func saveSharedFiles(shares []SharedFile) error {
         return err
     }
     
-    sharesFile := filepath.Join(appConfig.StorageDirectory, "shared_files.json")
+    sharesFile := filepath.Join(appConfig.GetDataDirectory(), "shared_files.json")
     
     data, err := json.MarshalIndent(shares, "", "  ")
     if err != nil {
