@@ -78,6 +78,7 @@ func (a *App) LoginUser(username, password string) (map[string]interface{}, erro
 	return map[string]interface{}{
 		"token":    result["token"],
 		"username": username,
+		"role":     "user", // or admin
 	}, nil
 }
 

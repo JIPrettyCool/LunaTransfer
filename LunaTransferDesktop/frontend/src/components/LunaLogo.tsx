@@ -35,7 +35,7 @@ const LunaLogo: React.FC<LogoProps> = ({ size = 40, className = '' }) => {
           className="w-3/4 h-3/4 bg-indigo-500 rounded-full shadow-lg flex items-center justify-center text-white font-bold"
           whileHover={{ scale: 1.1 }}
         >
-          LT
+        LT
         </motion.div>
       </div>
     </div>

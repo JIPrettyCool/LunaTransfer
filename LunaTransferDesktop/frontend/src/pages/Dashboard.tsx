@@ -6,10 +6,10 @@ import LunaLogo from '../components/LunaLogo';
 import FileBrowser from './FileBrowser';
 
 const Dashboard: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<'files' | 'groups' | 'settings'>('files');
+  const [activeSection, setActiveSection] = useState<'files' | 'share' | 'groups' | 'settings' | 'profile'>('files');
   const [darkMode, setDarkMode] = useState(false);
-  const { logout } = useAuthStore();
-  
+  const { logout, user } = useAuthStore();
+  const isAdmin = (user?.role || 'admin') === 'admin';
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle('dark');
@@ -20,9 +20,13 @@ const Dashboard: React.FC = () => {
       case 'files':
         return <FileBrowser />;
       case 'groups':
-        return <div className="p-8">Group Manager Coming Soon</div>;
+        return <div className="p-8 text-gray-500">Groups Manager Coming Soon</div>;
       case 'settings':
-        return <div className="p-8">Settings Coming Soon</div>;
+        return <div className="p-8 text-gray-500">Settings Coming Soon</div>;
+      case 'profile':
+        return <div className="p-8 text-gray-500">Profile Coming Soon</div>;
+      case 'share':
+        return <div className="p-8 text-gray-500">Share Manager Coming Soon</div>;
       default:
         return <FileBrowser />;
     }
@@ -53,7 +57,20 @@ const Dashboard: React.FC = () => {
               <span className="material-icons">folder</span>
             </ActionIcon>
           </Tooltip>
-          
+
+          <Tooltip label="Share" position="right">
+            <ActionIcon 
+              size="xl" 
+              variant={activeSection === 'share' ? 'filled' : 'subtle'}
+              color={activeSection === 'share' ? 'indigo' : 'gray'}
+              onClick={() => setActiveSection('share')}
+              className="transition-all"
+            >
+              <span className="material-icons">share</span>
+            </ActionIcon>
+          </Tooltip>
+
+          {isAdmin && (
           <Tooltip label="Groups" position="right">
             <ActionIcon 
               size="xl" 
@@ -65,7 +82,8 @@ const Dashboard: React.FC = () => {
               <span className="material-icons">group</span>
             </ActionIcon>
           </Tooltip>
-          
+          )}
+          {isAdmin && (
           <Tooltip label="Settings" position="right">
             <ActionIcon 
               size="xl" 
@@ -75,6 +93,18 @@ const Dashboard: React.FC = () => {
               className="transition-all"
             >
               <span className="material-icons">settings</span>
+            </ActionIcon>
+          </Tooltip>
+            )}
+          <Tooltip label="Profile" position="right">
+            <ActionIcon 
+              size="xl" 
+              variant={activeSection === 'profile' ? 'filled' : 'subtle'}
+              color={activeSection === 'profile' ? 'indigo' : 'gray'}
+              onClick={() => setActiveSection('profile')}
+              className="transition-all"
+            >
+              <img src="https://github.com/jiprettycool.png" alt="Profile" className="w-8 h-8 rounded-full" />
             </ActionIcon>
           </Tooltip>
         </div>

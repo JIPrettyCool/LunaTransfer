@@ -27,7 +27,14 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       const result = await LoginUser(username, password);
-      login(result.token as string, result.username as string);
+      
+      const userInfo = {
+        username: result.username as string,
+        role: result.role as string,
+      };
+      
+      login(result.token as string, userInfo);
+      
       notifications.show({
         title: 'Success',
         message: 'Logged in successfully!',
