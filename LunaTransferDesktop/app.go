@@ -5,46 +5,45 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
-// App struct
 type App struct {
 	ctx        context.Context
 	apiBaseURL string
 }
 
-// FileItem represents a file or directory
 type FileItem struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	IsDirectory bool   `json:"isDirectory"`
 	Size        int64  `json:"size"`
-	Modified    string `json:"modified"` // Changed from time.Time to string
+	Modified    string `json:"modified"`
 }
 
-// NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		apiBaseURL: "http://localhost:8080", // Your API URL
+		apiBaseURL: "http://localhost:8080",
 	}
 }
 
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	fmt.Println("Application started with API URL:", a.apiBaseURL)
 }
 
-// Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-// LoginUser handles user authentication via API
 func (a *App) LoginUser(username, password string) (map[string]interface{}, error) {
-	// Make a login request to your API
+	fmt.Println("Attempting login for user:", username)
+	
 	loginData := map[string]string{
 		"username": username,
 		"password": password,
@@ -66,8 +65,11 @@ func (a *App) LoginUser(username, password string) (map[string]interface{}, erro
 	}
 	defer resp.Body.Close()
 
+	fmt.Println("Login response status:", resp.StatusCode)
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("login failed with status: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("login failed with status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result map[string]interface{}
@@ -75,21 +77,34 @@ func (a *App) LoginUser(username, password string) (map[string]interface{}, erro
 		return nil, fmt.Errorf("failed to parse login response: %w", err)
 	}
 
+	fmt.Println("Login successful for user:", username)
+
+	var role string
+	if roleVal, ok := result["role"].(string); ok {
+		role = roleVal
+	} else {
+		role = "user"
+	}
+
 	return map[string]interface{}{
 		"token":    result["token"],
 		"username": username,
-		"role":     "user", // or admin
+		"role":     role,
 	}, nil
 }
 
-// listUserFiles gets files via the API - internal version
 func (a *App) listUserFiles(token, path string) ([]FileItem, error) {
-	url := a.apiBaseURL + "/api/files"
-	if path != "" {
-		url += "?path=" + path
-	}
+	fmt.Printf("Listing files at path: %q\n", path)
 
-	req, err := http.NewRequest("GET", url, nil)
+	encodedPath := ""
+	if path != "" {
+		encodedPath = "?path=" + url.QueryEscape(path)
+	}
+	
+	apiURL := a.apiBaseURL + "/api/files" + encodedPath
+	fmt.Println("API URL:", apiURL)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -103,8 +118,17 @@ func (a *App) listUserFiles(token, path string) ([]FileItem, error) {
 	}
 	defer resp.Body.Close()
 
+	fmt.Println("List files response status:", resp.StatusCode)
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("files request failed with status: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("files request failed with status: %d, response: %s", 
+			resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var result struct {
@@ -112,80 +136,192 @@ func (a *App) listUserFiles(token, path string) ([]FileItem, error) {
 		Path  string                   `json:"path"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse files response: %w", err)
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		var fileArray []map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &fileArray); err != nil {
+			return nil, fmt.Errorf("failed to parse files response: %w", err)
+		}
+		result.Files = fileArray
 	}
 
 	fileItems := make([]FileItem, 0, len(result.Files))
 	for _, file := range result.Files {
-		// Parse the modified time from your API response
-		var modified time.Time
-		if modifiedStr, ok := file["modified"].(string); ok {
-			modifiedTime, err := time.Parse(time.RFC3339, modifiedStr)
-			if err == nil {
-				modified = modifiedTime
+		name, ok := file["name"].(string)
+		if !ok {
+			continue
+		}
+
+		filePath, ok := file["path"].(string)
+		if !ok {
+			filePath = path + "/" + name
+			if path == "" {
+				filePath = name
 			}
 		}
 
-		// Get size as int64 carefully
+		isDir := false
+		if isDirVal, ok := file["isDirectory"].(bool); ok {
+			isDir = isDirVal
+		} else if isDirVal, ok := file["isDir"].(bool); ok {
+			isDir = isDirVal
+		}
+
 		var size int64
 		if sizeFloat, ok := file["size"].(float64); ok {
 			size = int64(sizeFloat)
 		}
 
-		isDir := false
-		if isDirVal, ok := file["isDir"].(bool); ok {
-			isDir = isDirVal
+		modified := time.Now().Format(time.RFC3339)
+		if modifiedStr, ok := file["modified"].(string); ok {
+			modified = modifiedStr
 		}
 
 		fileItem := FileItem{
-			Name:        file["name"].(string),
-			Path:        file["path"].(string),
+			Name:        name,
+			Path:        filePath,
 			IsDirectory: isDir,
 			Size:        size,
-			Modified:    modified.Format(time.RFC3339), // Convert time to string
+			Modified:    modified,
 		}
-
+		
 		fileItems = append(fileItems, fileItem)
 	}
 
 	return fileItems, nil
 }
 
-// ListUserFiles gets files via the API - TypeScript-safe version
-func (a *App) ListUserFiles(token, path string) ([]map[string]interface{}, error) {
-	items, err := a.listUserFiles(token, path)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Convert to TypeScript-friendly format
-	result := make([]map[string]interface{}, len(items))
-	for i, item := range items {
-		result[i] = map[string]interface{}{
-			"name":        item.Name,
-			"path":        item.Path,
-			"isDirectory": item.IsDirectory,
-			"size":        item.Size,
-			"modified":    item.Modified,
-		}
-	}
-	
-	return result, nil
+func (a *App) ListUserFiles(token, path string) ([]FileItem, error) {
+	return a.listUserFiles(token, path)
 }
 
-// Add more API methods as needed
 func (a *App) UploadFile(token, path string, fileData []byte, filename string) error {
-	// Implement file upload
+	fmt.Printf("Uploading file: %s to path: %s\n", filename, path)
+	
+	url := a.apiBaseURL + "/api/upload"
+	
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	
+	err := writer.WriteField("path", path)
+	if err != nil {
+		return fmt.Errorf("failed to add path field: %w", err)
+	}
+	
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+	
+	_, err = part.Write(fileData)
+	if err != nil {
+		return fmt.Errorf("failed to write file data: %w", err)
+	}
+	
+	err = writer.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer " + token)
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("file upload request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	fmt.Println("Upload response status:", resp.StatusCode)
+	
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("file upload failed with status: %d, response: %s", 
+			resp.StatusCode, string(bodyBytes))
+	}
+	
 	return nil
 }
 
 func (a *App) CreateDirectory(token, path, folderName string) error {
-	// Implement directory creation
+	fmt.Printf("Creating directory: %s in path: %s\n", folderName, path)
+	
+	url := a.apiBaseURL + "/api/directory"
+	
+	reqData := map[string]string{
+		"path": path,
+		"name": folderName,
+	}
+	jsonData, err := json.Marshal(reqData)
+	if err != nil {
+		return fmt.Errorf("failed to encode request data: %w", err)
+	}
+	
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer " + token)
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("directory creation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	fmt.Println("Directory creation response status:", resp.StatusCode)
+	
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("directory creation failed with status: %d, response: %s", 
+			resp.StatusCode, string(bodyBytes))
+	}
+	
 	return nil
 }
 
 func (a *App) DeleteFile(token, path string) error {
-	// Implement file/folder deletion
-	return nil
+    fmt.Printf("Deleting item at path: %s\n", path)
+    sanitizedPath := strings.TrimPrefix(path, "/")
+    deleteURL := a.apiBaseURL + "/api/delete"
+    reqData := map[string]string{
+        "path": sanitizedPath,
+    }
+    jsonData, err := json.Marshal(reqData)
+    if err != nil {
+        return fmt.Errorf("failed to encode request data: %w", err)
+    }
+    
+    req, err := http.NewRequest("POST", deleteURL, bytes.NewBuffer(jsonData))
+    if err != nil {
+        return fmt.Errorf("failed to create request: %w", err)
+    }
+    
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Authorization", "Bearer " + token)
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return fmt.Errorf("delete request failed: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    fmt.Printf("Delete response status: %d\n", resp.StatusCode)
+    
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("delete failed with status: %d, response: %s", 
+            resp.StatusCode, string(bodyBytes))
+    }
+    
+    return nil
 }
