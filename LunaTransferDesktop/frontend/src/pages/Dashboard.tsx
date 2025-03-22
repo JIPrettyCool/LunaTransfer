@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ActionIcon, Tooltip } from '@mantine/core';
+import { ActionIcon, Group, Tooltip } from '@mantine/core';
 import { useAuthStore } from '../store/authStore';
 import LunaLogo from '../components/LunaLogo';
 import FileBrowser from './FileBrowser';
+import GroupManager from './GroupManager';
 
 const Dashboard: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'files' | 'share' | 'groups' | 'settings' | 'profile'>('files');
   const [darkMode, setDarkMode] = useState(false);
-  const { logout, user } = useAuthStore();
-  const isAdmin = (user?.role || 'admin') === 'admin';
+  const { logout, userInfo } = useAuthStore();
+  const isAdmin = (userInfo?.role || 'admin') === 'admin';
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle('dark');
@@ -20,7 +21,7 @@ const Dashboard: React.FC = () => {
       case 'files':
         return <FileBrowser />;
       case 'groups':
-        return <div className="p-8 text-gray-500">Groups Manager Coming Soon</div>;
+        return <GroupManager />;
       case 'settings':
         return <div className="p-8 text-gray-500">Settings Coming Soon</div>;
       case 'profile':

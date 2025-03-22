@@ -3,22 +3,51 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from './store/authStore';
 import { notifications } from '@mantine/notifications';
-import { LoginUser } from '../wailsjs/go/main/App';
+import { CheckSetupStatus, GetDebugSetupInfo } from '../wailsjs/go/main/App';
 import LunaLogo from './components/LunaLogo';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import Setup from './pages/Setup';
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, setupCompleted, setSetupStatus } = useAuthStore();
   const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 1500);
+    const checkStatus = async () => {
+      try {
+        if (setupCompleted) {
+          setNeedsSetup(false);
+          setLoading(false);
+          return;
+        }
+
+        const debugInfo = await GetDebugSetupInfo();
+        console.log("Debug setup info:", debugInfo);
+        
+        if (debugInfo && debugInfo.userCount > 0) {
+          setSetupStatus(true);
+          setNeedsSetup(false);
+        } else {
+          const setupCompleted = await CheckSetupStatus();
+          console.log("Setup completed:", setupCompleted);
+          
+          setSetupStatus(setupCompleted);
+          setNeedsSetup(!setupCompleted);
+        }
+      } catch (error) {
+        console.error("Failed to check setup status:", error);
+        setNeedsSetup(false);
+      } finally {
+        setTimeout(() => {
+          setLoading(false);
+        }, 1000);
+      }
+    };
     
-    return () => clearTimeout(timer);
-  }, []);
+    checkStatus();
+  }, [setupCompleted, setSetupStatus]);
 
   if (loading) {
     return (
@@ -59,7 +88,13 @@ function App() {
       transition={{ duration: 0.5 }}
       className="h-screen w-screen bg-gray-50 dark:bg-gray-900"
     >
-      {isAuthenticated ? <Dashboard /> : <Login />}
+      {isAuthenticated ? (
+        <Dashboard />
+      ) : needsSetup ? (
+        <Setup />
+      ) : (
+        <Login />
+      )}
     </motion.div>
   );
 }

@@ -7,6 +7,7 @@ import (
     "LunaTransfer/middleware"
     "LunaTransfer/utils"
     "context"
+    "encoding/json"
     "fmt"
     "log"
     "net/http"
@@ -21,7 +22,7 @@ func main() {
     logger := log.New(os.Stdout, "LunaTransfer: ", log.LstdFlags|log.Lshortfile)
     fmt.Println("LunaTransfer starting up...")
     appConfig, err := config.LoadConfig()
-    if err != nil {
+    if (err != nil) {
         logger.Fatalf("Failed to load configuration: %v", err)
     }
         logPath := filepath.Join(appConfig.LogDirectory, "logs") 
@@ -53,6 +54,47 @@ func main() {
     r.Handle("/signup", middleware.ValidationMiddleware(middleware.ValidateSignupRequest)(http.HandlerFunc(handlers.CreateUserHandler))).Methods("POST")
     r.Handle("/login", middleware.ValidationMiddleware(middleware.ValidateLoginRequest)(http.HandlerFunc(handlers.LoginHandler))).Methods("POST")
     r.Handle("/logout", middleware.AuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))).Methods("POST")
+
+    r.HandleFunc("/api/system/setup-status", setupStatusHandler).Methods("GET")
+
+    r.HandleFunc("/debug/setup", func(w http.ResponseWriter, r *http.Request) {
+        usersFile := "users.json"
+        fileExists := false
+        userCount := 0
+        
+        data, err := os.ReadFile(usersFile)
+        if err == nil {
+            fileExists = true
+            
+            var users []auth.User
+            if err := json.Unmarshal(data, &users); err == nil {
+                userCount = len(users)
+            }
+        }
+        
+        setupStatus, err := auth.IsSetupCompleted()
+        errMsg := ""
+        if err != nil {
+            errMsg = err.Error()
+        }
+        
+        absPath, absErr := filepath.Abs(usersFile)
+        if absErr != nil {
+            absPath = usersFile
+        }
+        
+        result := map[string]interface{}{
+            "fileExists": fileExists,
+            "fileSize": len(data),
+            "userCount": userCount,
+            "setupStatus": setupStatus,
+            "error": errMsg,
+            "filePath": absPath,
+        }
+        
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(result)
+    })
 
     api := r.PathPrefix("/api").Subrouter()
     api.Use(middleware.AuthMiddleware)
@@ -180,4 +222,20 @@ func main() {
         logger.Fatalf("Server forced to shutdown: %v", err)
     }
     logger.Println("Server gracefully stopped")
+}
+
+func setupStatusHandler(w http.ResponseWriter, r *http.Request) {
+    userFilePath := "users.json"
+    setupCompleted := false
+    data, err := os.ReadFile(userFilePath)
+    if err == nil {
+        var usersList []interface{}
+        if json.Unmarshal(data, &usersList) == nil {
+            setupCompleted = len(usersList) > 0
+        }
+    }
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "setupCompleted": setupCompleted,
+    })
 }

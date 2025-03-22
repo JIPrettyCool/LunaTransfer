@@ -9,15 +9,17 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
+	"path/filepath"
 )
 
 type App struct {
 	ctx        context.Context
 	apiBaseURL string
-}
 
+}
 type FileItem struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
@@ -324,4 +326,136 @@ func (a *App) DeleteFile(token, path string) error {
     }
     
     return nil
+}
+
+func (a *App) CheckSetupStatus() (bool, error) {
+    usersFile := "users.json"
+    data, err := os.ReadFile(usersFile)
+    if err == nil && len(data) > 10 {
+        return true, nil
+    }
+    
+    resp, err := http.Get(a.apiBaseURL + "/api/system/setup-status")
+    if err != nil {
+        return false, fmt.Errorf("failed to check setup status: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    var result struct {
+        SetupCompleted bool `json:"setupCompleted"`
+    }
+    
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return false, fmt.Errorf("failed to parse setup status: %w", err)
+    }
+    
+    return result.SetupCompleted, nil
+}
+
+func (a *App) DebugFileLocations() map[string]interface{} {
+    workingDir, _ := os.Getwd()
+    
+    usersFile := "users.json"
+    _, usersErr := os.Stat(usersFile)
+    
+    absPath, _ := filepath.Abs(usersFile)
+    
+    return map[string]interface{}{
+        "workingDirectory": workingDir,
+        "usersFileExists": usersErr == nil,
+        "usersFilePath": absPath,
+    }
+}
+
+func (a *App) GetDebugSetupInfo() map[string]interface{} {
+    usersFile := "users.json"
+    fileExists := false
+    var fileInfo os.FileInfo
+    var err error
+    fileInfo, err = os.Stat(usersFile)
+    if err == nil {
+        fileExists = true
+    }
+    var fileContent []byte
+    var fileSize int64
+    if fileExists {
+        fileContent, _ = os.ReadFile(usersFile)
+        fileSize = fileInfo.Size()
+    }
+    userCount := 0
+    var users []map[string]interface{}
+    if len(fileContent) > 0 {
+        err = json.Unmarshal(fileContent, &users)
+        if err == nil {
+            userCount = len(users)
+        }
+    }
+    cwd, _ := os.Getwd()
+    absPath, _ := filepath.Abs(usersFile)
+    relativePath := "users.json"
+    absPath, _ = filepath.Abs(relativePath)
+    parentPath := filepath.Join("..", "users.json")
+    absParentPath, _ := filepath.Abs(parentPath)
+    _, relErr := os.Stat(relativePath)
+    _, absErr := os.Stat(absPath)
+    _, parentErr := os.Stat(parentPath)
+    _, absParentErr := os.Stat(absParentPath)
+
+    return map[string]interface{}{
+        "fileExists": fileExists,
+        "filePath": absPath,
+        "workingDirectory": cwd,
+        "fileSize": fileSize,
+        "fileContent": string(fileContent),
+        "userCount": userCount,
+        "error": fmt.Sprintf("%v", err),
+        "setupCompleted": userCount > 0,
+        "relativePathExists": relErr == nil,
+        "absolutePathExists": absErr == nil,
+        "parentPathExists": parentErr == nil,
+        "absParentPathExists": absParentErr == nil,
+        "relativePath": relativePath,
+        "absolutePath": absPath,
+        "parentPath": parentPath,
+        "absParentPath": absParentPath,
+    }
+}
+
+func (a *App) PerformSetup(username, password, email string) (map[string]interface{}, error) {
+    setupData := map[string]string{
+        "username": username,
+        "password": password,
+        "email": email,
+    }
+    
+    jsonData, err := json.Marshal(setupData)
+    if err != nil {
+        return nil, fmt.Errorf("failed to encode setup data: %w", err)
+    }
+    
+    resp, err := http.Post(
+        a.apiBaseURL+"/setup",
+        "application/json",
+        bytes.NewBuffer(jsonData),
+    )
+    
+    if err != nil {
+        return nil, fmt.Errorf("setup request failed: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    bodyBytes, _ := io.ReadAll(resp.Body)
+    
+    fmt.Printf("Setup response status: %d\n", resp.StatusCode)
+    fmt.Printf("Setup response: %s\n", string(bodyBytes))
+    
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        return nil, fmt.Errorf("setup failed with status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+    }
+    
+    return map[string]interface{}{
+        "success": true,
+        "username": username,
+        "message": "Setup completed successfully. Please log in with your new credentials.",
+    }, nil
 }

@@ -270,21 +270,29 @@ func DeleteUser(username string) error {
 
 func IsSetupCompleted() (bool, error) {
     users, err := LoadUsers()
-    if (err != nil) {
-        if errors.Is(err, ErrUsersFileNotFound) {
+    if err != nil {
+        if os.IsNotExist(err) {
             return false, nil
         }
         return false, err
     }
     
-    // Check if any admin exists
-    for _, user := range users {
-        if user.Role == RoleAdmin {
-            return true, nil
-        }
+    return len(users) > 0, nil
+}
+
+func LogSetupStatus() {
+    users, err := LoadUsers()
+    if err != nil {
+        log.Printf("Error loading users: %v", err)
+        return
     }
     
-    return false, nil
+    log.Printf("Found %d users in users.json", len(users))
+    i := 0
+    for username, user := range users {
+        log.Printf("User %d: %s (role: %s)", i+1, username, user.Role)
+        i++
+    }
 }
 
 func GetUserByUsername(username string) (*User, error) {
@@ -292,12 +300,43 @@ func GetUserByUsername(username string) (*User, error) {
     if (err != nil) {
         return nil, err
     }
-    
     for _, user := range users {
         if user.Username == username {
             return &user, nil
         }
     }
-    
     return nil, fmt.Errorf("user not found: %s", username)
+}
+
+func DebugSetupStatus() map[string]interface{} {
+    fileExists := false
+    fileInfo, err := os.Stat(usersFile)
+    if err == nil {
+        fileExists = true
+    }
+
+    var fileContent []byte
+    var fileSize int64
+    if fileExists {
+        fileContent, _ = os.ReadFile(usersFile)
+        fileSize = fileInfo.Size()
+    }
+
+    userMap, err := LoadUsers()
+    loadError := ""
+    if err != nil {
+        loadError = err.Error()
+    }
+
+    cwd, _ := os.Getwd()
+    
+    return map[string]interface{}{
+        "fileExists": fileExists,
+        "filePath": filepath.Join(cwd, usersFile),
+        "fileSize": fileSize,
+        "fileContent": string(fileContent),
+        "userCount": len(userMap),
+        "loadError": loadError,
+        "setupCompleted": len(userMap) > 0,
+    }
 }
