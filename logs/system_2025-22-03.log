@@ -1,0 +1,9 @@
+SYSTEM: 2025/03/22 21:34:49 ⚙️ System logger initialized successfully
+SYSTEM: 2025/03/22 21:34:49 📝 [SERVER_START] [User: system] [IP: localhost] Server starting on port 8080
+SYSTEM: 2025/03/22 21:34:49 📝 [JWT_INIT] [User: system] [IP: localhost] JWT initialized with 24 hour expiry
+SYSTEM: 2025/03/22 21:36:02 ⚙️ System logger initialized successfully
+SYSTEM: 2025/03/22 21:36:02 📝 [SERVER_START] [User: system] [IP: localhost] Server starting on port 8080
+SYSTEM: 2025/03/22 21:36:02 📝 [JWT_INIT] [User: system] [IP: localhost] JWT initialized with 24 hour expiry
+SYSTEM: 2025/03/22 21:48:57 ⚙️ System logger initialized successfully
+SYSTEM: 2025/03/22 21:48:57 📝 [SERVER_START] [User: system] [IP: localhost] Server starting on port 8080
+SYSTEM: 2025/03/22 21:48:57 📝 [JWT_INIT] [User: system] [IP: localhost] JWT initialized with 24 hour expiry
